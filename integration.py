@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List
+from uuid import uuid4
 
 
 @dataclass
@@ -8,7 +9,7 @@ class DermatologyClinicSystem:
 
     def create_visit(self, patient_id: str, diagnosis: str) -> Dict[str, object]:
         visit = {
-            "visit_id": len(self.visits) + 1,
+            "visit_id": str(uuid4()),
             "patient_id": patient_id,
             "diagnosis": diagnosis,
         }
@@ -24,7 +25,7 @@ class LabSystem:
         created = []
         for test_name in tests:
             order = {
-                "order_id": len(self.orders) + 1,
+                "order_id": str(uuid4()),
                 "patient_id": patient_id,
                 "test": test_name,
                 "status": "ordered",
@@ -40,7 +41,7 @@ class PharmacySystem:
 
     def create_prescription(self, patient_id: str, medications: List[str]) -> Dict[str, object]:
         prescription = {
-            "prescription_id": len(self.prescriptions) + 1,
+            "prescription_id": str(uuid4()),
             "patient_id": patient_id,
             "medications": list(medications),
             "status": "created",
