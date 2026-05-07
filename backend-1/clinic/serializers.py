@@ -4,7 +4,7 @@ from .models import (
     Patient, Doctor, Receptionist, Service, Appointment, AppointmentService,
     Invoice, InvoiceItem, MedicalRecord, Medication, Prescription, PrescriptionMedication,
     TreatmentPlan, TreatmentSession, Allergy, PatientAllergy, InventoryItem, StockTransaction,
-    LaserSession, MedicalCondition, PatientMedicalCondition, SurgeryType, PatientSurgery
+    LaserSession, MedicalCondition, PatientMedicalCondition, SurgeryType, PatientSurgery, PharmacyDispatch
     , InsuranceCompany, ClinicSchedule
 )
 from django.contrib.auth.models import User
@@ -27,7 +27,7 @@ class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = [
-            'patient_id', 'name', 'age', 'gender', 'phone', 'email', 'notes',
+            'patient_id', 'global_patient_id', 'name', 'age', 'gender', 'phone', 'email', 'notes',
             'medical_history', 'surgeries', 'created_at',
             'has_insurance', 'insurance_company', 'insurance_member_id', 'insurance_valid_from', 'insurance_valid_to',
             'insurance_company_name', 'insurance_discount_percent', 'insurance_is_active',
@@ -132,6 +132,12 @@ class PrescriptionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Prescription
+        fields = '__all__'
+
+
+class PharmacyDispatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PharmacyDispatch
         fields = '__all__'
 
 

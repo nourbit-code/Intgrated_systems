@@ -4,6 +4,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -29,8 +30,9 @@ import html2canvas from "html2canvas";
 import { useAuth } from '../../context/AuthContext';
 
 // --- API ---
-import { getPatientDetails, getMedications, getMedicationSuggestions, saveDiagnosis, searchOntology } from '../../../src/api/doctorApi';
+import { dispatchLabOrders, dispatchPrescriptionToPharmacy, getLabCatalog, getPatientDetails, getPatientLabResults, getMedications, getMedicationSuggestions, getPharmacyDispatchStatus, markLabResultReviewed, retryPharmacyDispatch, saveDiagnosis, searchOntology } from '../../../src/api/doctorApi';
 import { getInventory, consumeStock } from '../../../src/api/inventoryApi';
+import { useAutoRefresh } from "@/src/hooks/useAutoRefresh";
 
 // --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
 import PatientInfoBar, { ServiceKey } from '../../../components/PatientInfoBar';
@@ -70,6 +72,9 @@ const THEME = {
 const DEFAULT_DIAGNOSIS_TEMPLATES = [
   "Acne Vulgaris", "Melasma", "Alopecia Areata", "Tinea Capitis", "Psoriasis", "Eczema", "Vitiligo"
 ];
+
+const COMMON_LAB_TESTS = ["CBC", "CRP", "ESR", "HbA1c", "Fasting Blood Glucose", "Liver Function Test"];
+const COMMON_SCANS = ["Chest X-Ray", "Abdominal Ultrasound", "CT Chest", "MRI Brain"];
 
 const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v6_data`;
 const storageKeyForTemplates = "custom_diagnosis_templates_v1";
@@ -573,6 +578,8 @@ const DiagnosisPage = () => {
   const [diagnosis, setDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [rxNotes, setRxNotes] = useState(""); 
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [voiceLang, setVoiceLang] = useState<"en-US" | "ar-EG">("en-US");
   const [selectedMeds, setSelectedMeds] = useState<any[]>([]);
   const [medSearchQuery, setMedSearchQuery] = useState("");
   const [medResults, setMedResults] = useState<any[]>([]);
@@ -581,9 +588,18 @@ const DiagnosisPage = () => {
   // ⭐️ UPDATED: Retaining the PhotoItem type for photos state
   const [photos, setPhotos] = useState<PhotoItem[]>([]); 
   const [labs, setLabs] = useState<any[]>([]); 
+  const [remoteLabs, setRemoteLabs] = useState<any[]>([]);
+  const [includeLocalLabs, setIncludeLocalLabs] = useState(false);
+  const [labFeedLoading, setLabFeedLoading] = useState(false);
+  const [labFeedError, setLabFeedError] = useState<string | null>(null);
+  const [labFeedLastSyncedAt, setLabFeedLastSyncedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [latestPrescriptionId, setLatestPrescriptionId] = useState<number | null>(null);
+  const [pharmacyDispatch, setPharmacyDispatch] = useState<any | null>(null);
+  const prescriptionLocked = pharmacyDispatch?.status === "sent" || pharmacyDispatch?.status === "acknowledged";
+  const [sendingToPharmacy, setSendingToPharmacy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Patient data from API
@@ -626,12 +642,62 @@ const DiagnosisPage = () => {
     code?: string;
   } | null>(null);
   const [severity, setSeverity] = useState<"Mild" | "Moderate" | "Severe" | "">("");
+  const [labOrderName, setLabOrderName] = useState("");
+  const [labOrderCategory, setLabOrderCategory] = useState<"LAB_TEST" | "SCAN">("LAB_TEST");
+  const [showLabOrderSuggestions, setShowLabOrderSuggestions] = useState(false);
+  const [labCatalogTests, setLabCatalogTests] = useState<string[]>([]);
+  const [labCatalogScans, setLabCatalogScans] = useState<string[]>([]);
+  const [labOrderNotes, setLabOrderNotes] = useState("");
+  const [orderedTests, setOrderedTests] = useState<{name: string; category: "LAB_TEST" | "SCAN"; notes?: string}[]>([]);
+  const [sendingLabOrders, setSendingLabOrders] = useState(false);
+  const [labOrderDispatchStatus, setLabOrderDispatchStatus] = useState<{state: "idle" | "sent" | "failed"; message: string; at?: string}>({
+    state: "idle",
+    message: "No lab orders sent yet.",
+  });
+  const [reportPreviewVisible, setReportPreviewVisible] = useState(false);
+  const [reportPreviewUri, setReportPreviewUri] = useState("");
+  const [reportPreviewTitle, setReportPreviewTitle] = useState("");
+  const [reportPreviewText, setReportPreviewText] = useState("");
   const [suggestedMeds, setSuggestedMeds] = useState<any[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const suggestionCacheRef = useRef<Map<string, any[]>>(new Map());
+  const voiceRecognitionRef = useRef<any>(null);
   const [doLoading, setDoLoading] = useState(false);
   const [doError, setDoError] = useState<string | null>(null);
+
+  const labOrderOptions = useMemo(
+    () => {
+      if (labOrderCategory === "LAB_TEST") {
+        return labCatalogTests.length > 0 ? labCatalogTests : COMMON_LAB_TESTS;
+      }
+      return labCatalogScans.length > 0 ? labCatalogScans : COMMON_SCANS;
+    },
+    [labOrderCategory, labCatalogTests, labCatalogScans]
+  );
+
+  const filteredLabOrderOptions = useMemo(() => {
+    const q = labOrderName.trim().toLowerCase();
+    if (!q) return labOrderOptions;
+    return labOrderOptions.filter((item) => item.toLowerCase().includes(q));
+  }, [labOrderName, labOrderOptions]);
+
+  useEffect(() => {
+    setLabOrderName("");
+    setShowLabOrderSuggestions(false);
+  }, [labOrderCategory]);
+
+  const loadCatalog = useCallback(async () => {
+    const result = await getLabCatalog();
+    if (!result.success) return;
+    const payload = result.data || {};
+    const tests = Array.isArray(payload.lab_tests) ? payload.lab_tests.map((x: any) => x?.name).filter(Boolean) : [];
+    const scans = Array.isArray(payload.scan_types) ? payload.scan_types.map((x: any) => x?.name).filter(Boolean) : [];
+    setLabCatalogTests(Array.from(new Set(tests)).sort((a, b) => a.localeCompare(b)));
+    setLabCatalogScans(Array.from(new Set(scans)).sort((a, b) => a.localeCompare(b)));
+  }, []);
+
+  useAutoRefresh(loadCatalog, { intervalMs: 30000, runOnMount: true });
 
   // --- Disease Ontology Search function ---
   const searchDiseaseOntology = async (text?: string) => {
@@ -791,12 +857,12 @@ const DiagnosisPage = () => {
         setError(result.error || 'Failed to load patient data');
       }
       
-      // Also try to load locally cached session data (photos, labs, etc.)
+      // Also try to load locally cached session data (textual draft only).
+      // Avoid loading cached photos/labs to prevent cross-patient file leakage
+      // when local ids are reused after DB resets.
       const raw = await AsyncStorage.getItem(storageKeyForPatient(patientId));
       if (raw) {
         const data = JSON.parse(raw);
-        if(data.photos) setPhotos(data.photos);
-        if(data.labs) setLabs(data.labs);
         // Don't overwrite diagnosis if we already have fresh data
         if(data.diagnosis && !diagnosis) setDiagnosis(data.diagnosis);
         if(data.rxNotes && !rxNotes) setRxNotes(data.rxNotes);
@@ -817,6 +883,50 @@ const DiagnosisPage = () => {
       setLoading(false);
     }
   }, [patientId]);
+
+  const fetchRemoteLabs = useCallback(async () => {
+    if (!patientId) return;
+    setLabFeedLoading(true);
+    setLabFeedError(null);
+
+    const result = await getPatientLabResults(Number(patientId), {
+      includeLocal: includeLocalLabs,
+      status: "all",
+    });
+    if (!result.success) {
+      setLabFeedError(result.error || "Failed to sync lab reports");
+      setLabFeedLoading(false);
+      return;
+    }
+
+    const data = Array.isArray(result.data?.results) ? result.data.results : [];
+    const deduped = data.filter((item: any, idx: number, arr: any[]) => {
+      const key = `${item.fhir_id || item.id || ""}-${item.uri || item.url || ""}`;
+      return arr.findIndex((x) => `${x.fhir_id || x.id || ""}-${x.uri || x.url || ""}` === key) === idx;
+    });
+    setRemoteLabs(deduped);
+    setLabFeedLastSyncedAt(new Date().toLocaleString("en-EG"));
+    setLabFeedLoading(false);
+  }, [patientId, includeLocalLabs]);
+
+  // Fetch lab reports from backend in FHIR-oriented feed (DiagnosticReport bundle)
+  useEffect(() => {
+    if (!patientId) return;
+    let isActive = true;
+
+    const safeFetch = async () => {
+      if (!isActive) return;
+      await fetchRemoteLabs();
+    };
+
+    safeFetch();
+    const intervalId = setInterval(safeFetch, 30000);
+
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+    };
+  }, [patientId, fetchRemoteLabs]);
 
   // --- Medication Search (API) ---
   useEffect(() => {
@@ -903,6 +1013,10 @@ const DiagnosisPage = () => {
     setTreatmentArea("");
     setSkinType("");
     setIntensity("Medium");
+    setOrderedTests([]);
+    setIsSaved(false);
+    setLatestPrescriptionId(null);
+    setPharmacyDispatch(null);
   };
 
   // --- Save Data to Backend ---
@@ -919,8 +1033,16 @@ const DiagnosisPage = () => {
     }
     
     const medsToSave = selectedMeds.filter((m) => (m.name || "").trim());
-    if (medsToSave.length === 0) {
-      Alert.alert("Missing Information", "Please add at least one medication to the prescription before saving.");
+    const testsToSave = orderedTests
+      .filter((t) => (t.name || "").trim())
+      .map((t) => ({
+        name: t.name,
+        category: t.category,
+        notes: t.notes || "",
+      }));
+
+    if (medsToSave.length === 0 && testsToSave.length === 0) {
+      Alert.alert("Missing Information", "Please add at least one medication or one requested test/scan before saving.");
       return;
     }
     
@@ -966,6 +1088,7 @@ const DiagnosisPage = () => {
           duration: med.duration,
           notes: med.notes || ''
         })),
+        ordered_tests: testsToSave,
         photos: photosForBackend,
         labs: labsForBackend
       };
@@ -973,6 +1096,17 @@ const DiagnosisPage = () => {
       const result = await saveDiagnosis(Number(patientId), diagnosisData);
       
       if (result.success) {
+        const prescriptionId = Number(result.data?.prescription_id || 0) || null;
+        setLatestPrescriptionId(prescriptionId);
+        setIsSaved(true);
+
+        if (prescriptionId) {
+          const statusResult = await getPharmacyDispatchStatus(prescriptionId);
+          if (statusResult.success) {
+            setPharmacyDispatch(statusResult.data?.latest || null);
+          }
+        }
+
         // Also save photos/labs locally as backup
         const localData = {
           photos,
@@ -991,16 +1125,14 @@ const DiagnosisPage = () => {
           }
         };
         await AsyncStorage.setItem(storageKeyForPatient(patientId), JSON.stringify(localData));
-        
-        // Always clear the form for a new diagnosis/session
-        clearFormFields();
-        // Clear local storage for this patient
-        await AsyncStorage.removeItem(storageKeyForPatient(patientId));
-        // Reset saved state
-        setIsSaved(false);
-        
-        // Show confirmation notification
-        Alert.alert("Success", "Diagnosis saved! Fields cleared for new session.");
+
+        if (startNew) {
+          clearFormFields();
+          await AsyncStorage.removeItem(storageKeyForPatient(patientId));
+          Alert.alert("Success", "Diagnosis saved. New session started.");
+        } else {
+          Alert.alert("Saved", "Diagnosis saved. You can now send the prescription to pharmacy.");
+        }
       } else {
         Alert.alert("Error", result.error || "Failed to save diagnosis");
       }
@@ -1015,6 +1147,61 @@ const DiagnosisPage = () => {
   // --- Pulse helpers for Laser session ---
   const incPasses = () => setPasses((p) => p + 1);
   const decPasses = () => setPasses((p) => Math.max(1, p - 1));
+
+  const handleStartVoiceNotes = useCallback(() => {
+    if (prescriptionLocked) return;
+    if (Platform.OS !== "web") {
+      Alert.alert("Voice Input", "Voice dictation is currently available on web.");
+      return;
+    }
+    const webWindow = globalThis as any;
+    const SpeechRecognition = webWindow.SpeechRecognition || webWindow.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      Alert.alert("Not Supported", "This browser does not support voice dictation.");
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = voiceLang;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event: any) => {
+      let transcript = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        transcript += event.results[i][0].transcript;
+      }
+      if (transcript.trim()) {
+        setRxNotes((prev) => `${prev}${prev ? " " : ""}${transcript.trim()}`);
+      }
+    };
+    recognition.onerror = () => {
+      setIsVoiceListening(false);
+    };
+    recognition.onend = () => {
+      setIsVoiceListening(false);
+      voiceRecognitionRef.current = null;
+    };
+
+    voiceRecognitionRef.current = recognition;
+    setIsVoiceListening(true);
+    recognition.start();
+  }, [prescriptionLocked, voiceLang]);
+
+  const handleStopVoiceNotes = useCallback(() => {
+    if (voiceRecognitionRef.current) {
+      voiceRecognitionRef.current.stop();
+      voiceRecognitionRef.current = null;
+    }
+    setIsVoiceListening(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (voiceRecognitionRef.current) {
+        voiceRecognitionRef.current.stop();
+      }
+    };
+  }, []);
   
   // --- Save Laser Session ---
   const saveLaserSession = async () => {
@@ -1190,6 +1377,217 @@ const DiagnosisPage = () => {
     }
   };
   const deleteLab = (id: string) => setLabs(l => l.filter(x => x.id !== id));
+  const allLabs = useMemo(() => [...remoteLabs, ...labs], [remoteLabs, labs]);
+  const readyRemoteLabsCount = useMemo(
+    () => remoteLabs.filter((l) => (l.status || "").toLowerCase() === "ready").length,
+    [remoteLabs]
+  );
+  const reviewedRemoteLabsCount = useMemo(
+    () => remoteLabs.filter((l) => Boolean(l.reviewed) || (l.status || "").toLowerCase() === "reviewed").length,
+    [remoteLabs]
+  );
+  const handleMarkLabReviewed = async (fileId: number | string) => {
+    if (!user?.id) return;
+    const result = await markLabResultReviewed(Number(fileId), Number(user.id));
+    if (!result.success) {
+      Alert.alert("Error", result.error || "Failed to mark lab as reviewed");
+      return;
+    }
+    setRemoteLabs((prev) =>
+      prev.map((item) =>
+        Number(item.id) === Number(fileId)
+          ? { ...item, reviewed: true, status: "reviewed", reviewed_at: result.data?.reviewed_at || item.reviewed_at }
+          : item
+      )
+    );
+  };
+
+  const openLabReport = async (labItem: any) => {
+    const fileUri = labItem?.uri || labItem?.url;
+    if (!fileUri) {
+      Alert.alert("Missing File", "No report URL was provided for this item.");
+      return;
+    }
+    try {
+      if (Platform.OS === "web") {
+        const title = labItem?.name || "Lab Report";
+        if (typeof fileUri === "string" && fileUri.startsWith("data:text/plain;base64,")) {
+          const base64 = fileUri.replace("data:text/plain;base64,", "");
+          const decoded = atob(base64);
+          setReportPreviewTitle(title);
+          setReportPreviewText(decoded);
+          setReportPreviewUri("");
+          setReportPreviewVisible(true);
+          return;
+        }
+        setReportPreviewTitle(title);
+        setReportPreviewText("");
+        setReportPreviewUri(fileUri);
+        setReportPreviewVisible(true);
+      } else {
+        await Linking.openURL(fileUri);
+      }
+    } catch (e) {
+      Alert.alert("Open Failed", "Could not open this report link.");
+    }
+  };
+
+  const parsedStructuredReport = useMemo(() => {
+    if (!reportPreviewText) return null;
+    try {
+      const parsed = JSON.parse(reportPreviewText);
+      if (!parsed || typeof parsed !== "object") return null;
+      const samples = Array.isArray(parsed.samples) ? parsed.samples : [];
+      const firstSample = samples[0] || {};
+      const rows = Array.isArray(firstSample.rows) ? firstSample.rows : [];
+      if (!rows.length) return null;
+      return {
+        testName: parsed.test_name || "Lab Report",
+        generatedAt: parsed.generated_at || "",
+        sampleId: firstSample.sample_id || "",
+        specimenType: firstSample.specimen_type || "",
+        tubeColor: firstSample.tube_color || "",
+        volume: firstSample.volume_ml || "",
+        rows,
+      };
+    } catch {
+      return null;
+    }
+  }, [reportPreviewText]);
+
+  const addRequestedTest = () => {
+    const name = labOrderName.trim();
+    if (!name) {
+      Alert.alert("Missing Test", "Please enter a test/scan name.");
+      return;
+    }
+    setOrderedTests((prev) => [...prev, { name, category: labOrderCategory, notes: labOrderNotes.trim() || "" }]);
+    setLabOrderName("");
+    setShowLabOrderSuggestions(false);
+    setLabOrderNotes("");
+  };
+
+  const removeRequestedTest = (index: number) => {
+    setOrderedTests((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const sendRequestedTestsToLab = async () => {
+    if (!patientId || !user?.id) {
+      Alert.alert("Missing Data", "Patient or doctor information is missing.");
+      return;
+    }
+    if (orderedTests.length === 0) {
+      Alert.alert("No Orders", "Please add at least one requested test.");
+      return;
+    }
+    setSendingLabOrders(true);
+    const result = await dispatchLabOrders(Number(patientId), Number(user.id), orderedTests);
+    setSendingLabOrders(false);
+    if (!result.success) {
+      setLabOrderDispatchStatus({
+        state: "failed",
+        message: result.error || "Could not send orders to lab.",
+        at: new Date().toLocaleString("en-EG"),
+      });
+      Alert.alert("Dispatch Failed", result.error || "Could not send orders to lab.");
+      return;
+    }
+    const createdCount = result.data?.result?.created_count ?? result.data?.result?.created?.length ?? 0;
+    const errors = result.data?.result?.errors || [];
+    const message =
+      errors.length > 0
+        ? `Sent with warnings. Created: ${createdCount}. Errors: ${errors.join(" | ")}`
+        : `Successfully sent ${createdCount} order(s) to lab.`;
+    setLabOrderDispatchStatus({
+      state: errors.length > 0 ? "failed" : "sent",
+      message,
+      at: new Date().toLocaleString("en-EG"),
+    });
+    Alert.alert(
+      errors.length > 0 ? "Sent With Warnings" : "Sent",
+      `${message}\n\nOrders kept in this visit so they can be saved into medical history.`
+    );
+  };
+
+  const handleSendToPharmacy = async () => {
+    if (!latestPrescriptionId) {
+      Alert.alert("Save First", "Please save diagnosis first to generate a prescription.");
+      return;
+    }
+    if (prescriptionLocked) {
+      Alert.alert("Already Sent", `Prescription already ${pharmacyDispatch?.status}.`);
+      return;
+    }
+
+    Alert.alert(
+      "Send To Pharmacy",
+      `Send ${selectedMeds.length} medication(s) to pharmacy now?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            setSendingToPharmacy(true);
+            const result = await dispatchPrescriptionToPharmacy(latestPrescriptionId, `rx-${latestPrescriptionId}`);
+            setSendingToPharmacy(false);
+            if (!result.success) {
+              Alert.alert("Dispatch Failed", result.error || "Could not send prescription");
+              return;
+            }
+            setPharmacyDispatch(result.data?.dispatch || null);
+            Alert.alert("Sent", "Prescription dispatched to pharmacy.");
+          }
+        }
+      ]
+    );
+  };
+
+  const handleRetryDispatch = async () => {
+    if (!latestPrescriptionId) return;
+    setSendingToPharmacy(true);
+    const result = await retryPharmacyDispatch(latestPrescriptionId);
+    setSendingToPharmacy(false);
+    if (!result.success) {
+      Alert.alert("Retry Failed", result.error || "Could not retry dispatch");
+      return;
+    }
+    setPharmacyDispatch(result.data?.dispatch || null);
+  };
+
+  const pharmacyStatusMeta = useMemo(() => {
+    const status = (pharmacyDispatch?.status || "").toLowerCase();
+    if (status === "acknowledged") {
+      return { bg: "#dcfce7", border: "#22c55e", text: "#166534", label: "ACKNOWLEDGED" };
+    }
+    if (status === "sent") {
+      return { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a", label: "SENT" };
+    }
+    if (status === "failed") {
+      return { bg: "#fee2e2", border: "#ef4444", text: "#991b1b", label: "FAILED" };
+    }
+    if (status === "queued") {
+      return { bg: "#f1f5f9", border: "#64748b", text: "#334155", label: "QUEUED" };
+    }
+    return { bg: "#f8fafc", border: THEME.border, text: THEME.text, label: "UNKNOWN" };
+  }, [pharmacyDispatch?.status]);
+
+  useEffect(() => {
+    let isActive = true;
+    if (!latestPrescriptionId) return;
+
+    const refreshDispatchStatus = async () => {
+      const result = await getPharmacyDispatchStatus(latestPrescriptionId);
+      if (!isActive || !result.success) return;
+      setPharmacyDispatch(result.data?.latest || null);
+    };
+
+    refreshDispatchStatus();
+    const timer = setInterval(refreshDispatchStatus, 15000);
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
+  }, [latestPrescriptionId]);
   
   // --- Diagnosis Templates Filtering ---
   const filteredTemplates = useMemo(() => {
@@ -1404,6 +1802,7 @@ const DiagnosisPage = () => {
                     key={m.id}
                     style={styles.chip}
                     onPress={() => {
+                      if (prescriptionLocked) return;
                       if (!selectedMeds.find((x: any) => x.id === m.id)) {
                         setSelectedMeds((prev: any[]) => [...prev, { ...m, notes: m.notes || "" }]);
                       }
@@ -1420,20 +1819,139 @@ const DiagnosisPage = () => {
           {/* Prescription Notes */}
           <View style={styles.card}>
               <SectionHeader icon="create" title="Prescription / General Instructions" />
+              <View style={styles.voiceRow}>
+                <View style={styles.voiceLangRow}>
+                  <TouchableOpacity
+                    style={[styles.voiceLangChip, voiceLang === "en-US" && styles.voiceLangChipActive]}
+                    onPress={() => setVoiceLang("en-US")}
+                    disabled={isVoiceListening}
+                  >
+                    <Text style={[styles.voiceLangText, voiceLang === "en-US" && styles.voiceLangTextActive]}>EN</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.voiceLangChip, voiceLang === "ar-EG" && styles.voiceLangChipActive]}
+                    onPress={() => setVoiceLang("ar-EG")}
+                    disabled={isVoiceListening}
+                  >
+                    <Text style={[styles.voiceLangText, voiceLang === "ar-EG" && styles.voiceLangTextActive]}>AR</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  style={[styles.voiceBtn, isVoiceListening && styles.voiceBtnActive]}
+                  onPress={isVoiceListening ? handleStopVoiceNotes : handleStartVoiceNotes}
+                  disabled={prescriptionLocked}
+                >
+                  <Ionicons name={isVoiceListening ? "mic-off" : "mic"} size={14} color="#fff" />
+                  <Text style={styles.voiceBtnText}>{isVoiceListening ? "Stop Voice" : "Voice Input"}</Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
                   style={[styles.input, styles.textarea, {height: 60}]}
                   placeholder="e.g., Avoid sun exposure, drink water, follow-up in 2 weeks..."
                   value={rxNotes}
                   onChangeText={setRxNotes}
+                  editable={!prescriptionLocked}
                   multiline
               />
+          </View>
+
+          <View style={styles.card}>
+            <SectionHeader icon="flask" title="Order Tests & Scans For Lab" color={THEME.accentBlue} />
+            <View
+              style={[
+                styles.dispatchStatusBox,
+                labOrderDispatchStatus.state === "sent" && styles.dispatchStatusBoxSent,
+                labOrderDispatchStatus.state === "failed" && styles.dispatchStatusBoxFailed,
+              ]}
+            >
+              <Text style={styles.dispatchStatusTitle}>Lab Order Dispatch Status</Text>
+              <Text style={styles.dispatchStatusText}>{labOrderDispatchStatus.message}</Text>
+              {labOrderDispatchStatus.at ? (
+                <Text style={styles.dispatchStatusTime}>Updated: {labOrderDispatchStatus.at}</Text>
+              ) : null}
+            </View>
+            <View style={styles.orderTypeRow}>
+              <TouchableOpacity
+                style={[styles.orderTypeChip, labOrderCategory === "LAB_TEST" && styles.orderTypeChipActive]}
+                onPress={() => setLabOrderCategory("LAB_TEST")}
+              >
+                <Text style={[styles.orderTypeText, labOrderCategory === "LAB_TEST" && styles.orderTypeTextActive]}>Lab Test</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.orderTypeChip, labOrderCategory === "SCAN" && styles.orderTypeChipActive]}
+                onPress={() => setLabOrderCategory("SCAN")}
+              >
+                <Text style={[styles.orderTypeText, labOrderCategory === "SCAN" && styles.orderTypeTextActive]}>Scan</Text>
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="Requested test/scan name (e.g. CBC, Chest X-Ray)"
+              value={labOrderName}
+              onChangeText={(text) => {
+                setLabOrderName(text);
+                setShowLabOrderSuggestions(true);
+              }}
+              onFocus={() => setShowLabOrderSuggestions(true)}
+            />
+            {showLabOrderSuggestions && filteredLabOrderOptions.length > 0 ? (
+              <View style={styles.dropdown}>
+                <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
+                  {filteredLabOrderOptions.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={styles.dropdownRow}
+                      onPress={() => {
+                        setLabOrderName(item);
+                        setShowLabOrderSuggestions(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownTitle}>{item}</Text>
+                      <Text style={styles.dropdownSub}>{labOrderCategory === "LAB_TEST" ? "Lab Test" : "Scan"}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+            <TextInput
+              style={[styles.input, { marginTop: 8 }]}
+              placeholder="Order notes (optional)"
+              value={labOrderNotes}
+              onChangeText={setLabOrderNotes}
+            />
+            <TouchableOpacity style={[styles.saveBtn, { marginTop: 10 }]} onPress={addRequestedTest}>
+              <Text style={styles.saveBtnText}>Add To Lab Order List</Text>
+            </TouchableOpacity>
+            {orderedTests.length > 0 ? (
+              <View style={{ marginTop: 10 }}>
+                {orderedTests.map((item, idx) => (
+                  <View key={`${item.name}-${idx}`} style={styles.requestedOrderRow}>
+                    <Text style={styles.requestedOrderText}>{item.category} | {item.name}</Text>
+                    <TouchableOpacity onPress={() => removeRequestedTest(idx)}>
+                      <Ionicons name="trash-outline" size={16} color={THEME.danger} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={[styles.saveBtn, { marginTop: 10, backgroundColor: THEME.accentBlue }, sendingLabOrders && { opacity: 0.7 }]}
+                  onPress={sendRequestedTestsToLab}
+                  disabled={sendingLabOrders}
+                >
+                  {sendingLabOrders ? (
+                    <ActivityIndicator color={THEME.white} size="small" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>Send Orders To Lab System</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
 
           {/* Meds Search */}
           <MedicationSelector 
               medications={medResults} 
               selectedMeds={selectedMeds} 
-              setSelectedMeds={setSelectedMeds} 
+              setSelectedMeds={prescriptionLocked ? (() => {}) : setSelectedMeds} 
               searchValue={medSearchQuery}
               onSearch={setMedSearchQuery}
               loading={medLoading}
@@ -1441,20 +1959,50 @@ const DiagnosisPage = () => {
           />
           
           {/* Custom Med Adder */}
-          <CustomMedicationAdder setSelectedMeds={setSelectedMeds} />
+          {!prescriptionLocked ? <CustomMedicationAdder setSelectedMeds={setSelectedMeds} /> : null}
           
           <PrescriptionTableAdvanced
               selectedMeds={selectedMeds}
-              setSelectedMeds={setSelectedMeds}
+              setSelectedMeds={prescriptionLocked ? (() => {}) : setSelectedMeds}
               patient={patient}
               doctorName={doctorDisplayName}
               clinicName={clinicDisplayName}
           />
+
+          <TouchableOpacity
+            style={[
+              styles.saveBtn,
+              {
+                marginTop: 8,
+                backgroundColor: prescriptionLocked ? "#64748b" : "#0284c7"
+              },
+              sendingToPharmacy && { opacity: 0.7 }
+            ]}
+            onPress={handleSendToPharmacy}
+            disabled={sendingToPharmacy || prescriptionLocked}
+          >
+            <Text style={styles.saveBtnText}>{sendingToPharmacy ? "Sending..." : "Send To Pharmacy"}</Text>
+          </TouchableOpacity>
+          {pharmacyDispatch ? (
+            <Text style={[styles.timestampText, { marginTop: 6, textAlign: "center", color: pharmacyStatusMeta.text, fontWeight: "700" }]}>
+              Pharmacy Status: {pharmacyStatusMeta.label}
+              {pharmacyDispatch?.retry_count ? ` • Retries: ${pharmacyDispatch.retry_count}` : ""}
+            </Text>
+          ) : null}
+          {pharmacyDispatch?.status === "failed" ? (
+            <TouchableOpacity
+              style={[styles.saveBtn, { marginTop: 8, backgroundColor: "#f59e0b" }, sendingToPharmacy && { opacity: 0.7 }]}
+              onPress={handleRetryDispatch}
+              disabled={sendingToPharmacy}
+            >
+              <Text style={styles.saveBtnText}>Retry Send</Text>
+            </TouchableOpacity>
+          ) : null}
           
           {/* Save Button */}
           <TouchableOpacity 
             style={[styles.saveBtn, saving && { opacity: 0.7 }]} 
-            onPress={() => saveData(true)}
+            onPress={() => saveData(false)}
             disabled={saving}
           >
             {saving ? (
@@ -1746,23 +2294,65 @@ const DiagnosisPage = () => {
           {/* LAB TESTS & SCANS SECTION (Updated to support PDF) */}
           <View style={[styles.card, { borderColor: THEME.accentBlueLight, borderWidth:1 }]}>
               <View style={styles.headerRow}>
-                     <SectionHeader icon="cloud-upload" title={`Lab Tests & Scans (${labs.length})`} color={THEME.accentBlue} />
-                     <TouchableOpacity onPress={pickLab} style={[styles.iconBtn, {backgroundColor: THEME.accentBlue}]}>
-                        <Ionicons name="add" size={18} color={THEME.white} />
-                     </TouchableOpacity>
+                     <SectionHeader icon="cloud-upload" title={`Lab Tests & Scans (${allLabs.length})`} color={THEME.accentBlue} />
+                     <View style={styles.labHeaderActions}>
+                        <TouchableOpacity
+                          onPress={fetchRemoteLabs}
+                          style={[styles.iconBtn, {backgroundColor: "#0f766e"}]}
+                          disabled={labFeedLoading}
+                        >
+                          {labFeedLoading ? (
+                            <ActivityIndicator color={THEME.white} size="small" />
+                          ) : (
+                            <Ionicons name="refresh" size={18} color={THEME.white} />
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={pickLab} style={[styles.iconBtn, {backgroundColor: THEME.accentBlue}]}>
+                          <Ionicons name="add" size={18} color={THEME.white} />
+                        </TouchableOpacity>
+                     </View>
               </View>
+              <View style={styles.labFeedControlsRow}>
+                <View style={styles.labFeedMetaRow}>
+                  <Text style={styles.labFeedMetaText}>Ready: {readyRemoteLabsCount}</Text>
+                  <Text style={styles.labFeedMetaText}>Reviewed: {reviewedRemoteLabsCount}</Text>
+                  <Text style={styles.labFeedMetaText}>Last sync: {labFeedLastSyncedAt || "Not synced yet"}</Text>
+                </View>
+                <View style={styles.labFeedToggleRow}>
+                  <TouchableOpacity
+                    onPress={() => setIncludeLocalLabs(false)}
+                    style={[styles.labFeedToggleChip, !includeLocalLabs && styles.labFeedToggleChipActive]}
+                  >
+                    <Text style={[styles.labFeedToggleText, !includeLocalLabs && styles.labFeedToggleTextActive]}>
+                      External Only
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setIncludeLocalLabs(true)}
+                    style={[styles.labFeedToggleChip, includeLocalLabs && styles.labFeedToggleChipActive]}
+                  >
+                    <Text style={[styles.labFeedToggleText, includeLocalLabs && styles.labFeedToggleTextActive]}>
+                      Include Local
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {labFeedError ? <Text style={styles.searchErrorText}>{labFeedError}</Text> : null}
               
               <View style={styles.photoGrid}>
-                    {labs.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyText}>No labs/scans uploaded. (Supports Images/PDFs)</Text></View>}
-                    {labs.map((l) => {
+                    {allLabs.length === 0 && <View style={styles.emptyState}><Text style={styles.emptyText}>No labs/scans available yet.</Text></View>}
+                    {allLabs.map((l) => {
                         const isImage = l.mimeType && l.mimeType.startsWith('image/');
+                        const isRemote = Boolean(
+                          l.fhir_id ||
+                          l.fhir_resource_type === "DiagnosticReport" ||
+                          l.source === "lab_system" ||
+                          l.source === "fhir_lab_system" ||
+                          typeof l.reviewed === "boolean"
+                        );
                         return (
                             <View key={l.id} style={[styles.photoCard, { borderColor: THEME.accentBlueLight }]}>
-                                <TouchableOpacity 
-                                    onPress={() => { 
-                                        Alert.alert("View File", `Attempting to open ${l.name}. Viewer is currently simplified.`);
-                                    }}
-                                >
+                                <TouchableOpacity onPress={() => openLabReport(l)}>
                                     {isImage ? (
                                         <Image 
                                             source={{ uri: l.uri }} 
@@ -1775,11 +2365,39 @@ const DiagnosisPage = () => {
                                         </View>
                                     )}
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.deleteMini} onPress={() => deleteLab(l.id)}>
-                                    <Ionicons name="close" size={10} color="#fff" />
-                                </TouchableOpacity>
+                                {!isRemote ? (
+                                  <TouchableOpacity style={styles.deleteMini} onPress={() => deleteLab(l.id)}>
+                                      <Ionicons name="close" size={10} color="#fff" />
+                                  </TouchableOpacity>
+                                ) : null}
                                 <View style={styles.photoFooter}>
-                                    <Text style={styles.timestampText}>{l.timestamp}</Text>
+                                    <Text style={styles.timestampText}>
+                                      {isRemote ? `FHIR DiagnosticReport • ${l.timestamp}` : l.timestamp}
+                                    </Text>
+                                    {isRemote ? (
+                                      <Text style={[styles.timestampText, { marginTop: 2 }]}>
+                                        {(l.status === "reviewed" || l.reviewed) ? "Reviewed" : "Ready"}
+                                        {l.observation_count ? ` | Obs: ${l.observation_count}` : ""}
+                                        {l.source ? ` | ${l.source}` : ""}
+                                      </Text>
+                                    ) : null}
+                                </View>
+                                <View style={styles.labCardTopActions}>
+                                  <TouchableOpacity
+                                    onPress={() => openLabReport(l)}
+                                    style={styles.openReportBtn}
+                                  >
+                                    <Ionicons name="open-outline" size={13} color="#fff" />
+                                    <Text style={styles.openReportBtnText}>Open</Text>
+                                  </TouchableOpacity>
+                                  {isRemote && !l.reviewed ? (
+                                    <TouchableOpacity
+                                      onPress={() => handleMarkLabReviewed(l.id)}
+                                      style={styles.markReviewedBtn}
+                                    >
+                                      <Text style={styles.markReviewedBtnText}>Reviewed</Text>
+                                    </TouchableOpacity>
+                                  ) : null}
                                 </View>
                             </View>
                         );
@@ -1796,6 +2414,87 @@ const DiagnosisPage = () => {
             customTemplates={customDiagnosisTemplates}
             setCustomTemplates={setCustomDiagnosisTemplates}
         />
+
+        <Modal
+          visible={reportPreviewVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setReportPreviewVisible(false)}
+        >
+          <View style={styles.previewOverlay}>
+            <View style={styles.previewContent}>
+              <View style={styles.previewHeader}>
+                <Text style={styles.previewTitle} numberOfLines={1}>{reportPreviewTitle || "Lab Report"}</Text>
+                <TouchableOpacity onPress={() => setReportPreviewVisible(false)}>
+                  <Ionicons name="close" size={24} color={THEME.text} />
+                </TouchableOpacity>
+              </View>
+              {Platform.OS === "web" ? (
+                parsedStructuredReport ? (
+                  <ScrollView style={styles.previewTextWrap}>
+                    <View style={styles.previewTopMetaRow}>
+                      <Text style={styles.previewTopMetaText}>
+                        {parsedStructuredReport.generatedAt
+                          ? new Date(parsedStructuredReport.generatedAt).toLocaleString("en-EG")
+                          : new Date().toLocaleString("en-EG")}
+                      </Text>
+                      <Text style={[styles.previewTopMetaText, { fontWeight: "700" }]}>
+                        Lab Report - {parsedStructuredReport.sampleId || "N/A"}
+                      </Text>
+                    </View>
+                    <Text style={styles.previewReportMainTitle}>Lab Report</Text>
+
+                    <View style={styles.previewPatientGrid}>
+                      <View style={styles.previewPatientCol}>
+                        <Text style={styles.previewReportMetaLine}>Patient: {patient?.name || "N/A"}</Text>
+                        <Text style={styles.previewReportMetaLine}>Gender: {patient?.gender || "N/A"}</Text>
+                        <Text style={styles.previewReportMetaLine}>Order: {patientId || "N/A"}</Text>
+                        <Text style={styles.previewReportMetaLine}>
+                          Specimen: {parsedStructuredReport.specimenType || "N/A"} · {parsedStructuredReport.tubeColor || "N/A"} · {parsedStructuredReport.volume || "N/A"} ml
+                        </Text>
+                      </View>
+                      <View style={styles.previewPatientCol}>
+                        <Text style={styles.previewReportMetaLine}>Age: {patient?.age ?? "N/A"}</Text>
+                        <Text style={styles.previewReportMetaLine}>Number: {patient?.phone || "N/A"}</Text>
+                        <Text style={styles.previewReportMetaLine}>Sample: {parsedStructuredReport.sampleId || "N/A"}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.previewReportSectionTitle}>{parsedStructuredReport.testName}</Text>
+                    <View style={styles.previewTable}>
+                      <View style={styles.previewTableHeader}>
+                        <Text style={[styles.previewCell, styles.previewHeadCell, { flex: 2 }]}>Parameter</Text>
+                        <Text style={[styles.previewCell, styles.previewHeadCell, { flex: 1.2 }]}>Result</Text>
+                        <Text style={[styles.previewCell, styles.previewHeadCell, { flex: 1.2 }]}>Unit</Text>
+                        <Text style={[styles.previewCell, styles.previewHeadCell, { flex: 1.6 }]}>Range</Text>
+                        <Text style={[styles.previewCell, styles.previewHeadCell, { flex: 1.2 }]}>Flag</Text>
+                      </View>
+                      {parsedStructuredReport.rows.map((row: any, idx: number) => (
+                        <View key={idx} style={styles.previewTableRow}>
+                          <Text style={[styles.previewCell, { flex: 2 }]}>{row.parameter || "-"}</Text>
+                          <Text style={[styles.previewCell, { flex: 1.2 }]}>{row.value || "-"}</Text>
+                          <Text style={[styles.previewCell, { flex: 1.2 }]}>{row.unit || "-"}</Text>
+                          <Text style={[styles.previewCell, { flex: 1.6 }]}>{row.min != null && row.max != null ? `${row.min}-${row.max}` : (row.reference || "-")}</Text>
+                          <Text style={[styles.previewCell, { flex: 1.2 }]}>{row.flag || "-"}</Text>
+                        </View>
+                      ))}
+                    </View>
+                    <Text style={styles.previewVerifiedText}>Verified By: Lab Technician</Text>
+                  </ScrollView>
+                ) : reportPreviewText ? (
+                  <ScrollView style={styles.previewTextWrap}>
+                    <Text style={styles.previewText}>{reportPreviewText}</Text>
+                  </ScrollView>
+                ) : (
+                  <iframe title="lab-report-preview" src={reportPreviewUri} style={{ width: "100%", height: "100%", border: "none" }} />
+                )
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyText}>Preview is available on web. On mobile, use Open Report.</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Modal>
         
         {/* Inventory Selection Modal */}
         <Modal
@@ -2474,12 +3173,15 @@ const styles = StyleSheet.create({
   photoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: Platform.OS === "web" ? 0 : 10,
     marginTop: 10,
   },
   photoCard: {
-    width: '47%', // Adjusted for gap
-    aspectRatio: 1,
+    width: Platform.OS === "web" ? "19%" : "47%",
+    minWidth: Platform.OS === "web" ? 150 : undefined,
+    marginRight: Platform.OS === "web" ? "1%" : 0,
+    marginBottom: 10,
+    aspectRatio: 0.82,
     borderRadius: THEME.radius,
     overflow: 'hidden',
     borderWidth: 2,
@@ -2496,11 +3198,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    padding: 5,
+    padding: 4,
   },
   timestampText: {
     color: THEME.white,
-    fontSize: 10,
+    fontSize: 9,
   },
   deleteMini: {
     position: 'absolute',
@@ -2529,6 +3231,327 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: THEME.radius,
     marginLeft: 10,
+  },
+  labHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  labFeedControlsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  labFeedMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+  },
+  labFeedMetaText: {
+    fontSize: 12,
+    color: THEME.text,
+    backgroundColor: THEME.accentBlueLight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  labFeedToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  labFeedToggleChip: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: THEME.white,
+  },
+  labFeedToggleChipActive: {
+    backgroundColor: THEME.accentBlue,
+    borderColor: THEME.accentBlue,
+  },
+  labFeedToggleText: {
+    fontSize: 12,
+    color: THEME.text,
+    fontWeight: '600',
+  },
+  labFeedToggleTextActive: {
+    color: THEME.white,
+  },
+  voiceRow: {
+    marginTop: 8,
+    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  voiceLangRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  voiceLangChip: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  voiceLangChipActive: {
+    backgroundColor: THEME.accentBlueLight,
+    borderColor: THEME.accentBlue,
+  },
+  voiceLangText: {
+    color: THEME.text,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  voiceLangTextActive: {
+    color: THEME.accentBlue,
+  },
+  voiceBtn: {
+    backgroundColor: THEME.accentBlue,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  voiceBtnActive: {
+    backgroundColor: THEME.danger,
+  },
+  voiceBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  orderTypeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  orderTypeChip: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: THEME.white,
+  },
+  orderTypeChipActive: {
+    backgroundColor: THEME.accentBlue,
+    borderColor: THEME.accentBlue,
+  },
+  orderTypeText: {
+    fontSize: 12,
+    color: THEME.text,
+    fontWeight: '600',
+  },
+  orderTypeTextActive: {
+    color: THEME.white,
+  },
+  requestedOrderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+  },
+  requestedOrderText: {
+    color: THEME.secondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dispatchStatusBox: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    backgroundColor: '#f8fafc',
+    padding: 10,
+    marginBottom: 8,
+  },
+  dispatchStatusBoxSent: {
+    borderColor: '#22c55e',
+    backgroundColor: '#ecfdf5',
+  },
+  dispatchStatusBoxFailed: {
+    borderColor: '#ef4444',
+    backgroundColor: '#fef2f2',
+  },
+  dispatchStatusTitle: {
+    color: THEME.secondary,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  dispatchStatusText: {
+    color: THEME.text,
+    fontSize: 12,
+  },
+  dispatchStatusTime: {
+    marginTop: 4,
+    color: THEME.textLight,
+    fontSize: 11,
+  },
+  labCardTopActions: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    zIndex: 30,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 4,
+  },
+  openReportBtn: {
+    backgroundColor: 'rgba(2,132,199,0.92)',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  markReviewedBtn: {
+    backgroundColor: 'rgba(2,132,199,0.92)',
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  markReviewedBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  openReportBtnText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  previewContent: {
+    width: '100%',
+    maxWidth: 920,
+    height: '88%',
+    backgroundColor: THEME.white,
+    borderRadius: THEME.radius,
+    overflow: 'hidden',
+  },
+  previewHeader: {
+    height: 52,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  previewTitle: {
+    color: THEME.secondary,
+    fontWeight: '700',
+    fontSize: 15,
+    flex: 1,
+    marginRight: 10,
+  },
+  previewTextWrap: {
+    flex: 1,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+  },
+  previewText: {
+    color: '#0f172a',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  previewReportMainTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  previewTopMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  previewTopMetaText: {
+    fontSize: 12,
+    color: '#0f172a',
+  },
+  previewPatientGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 24,
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  previewPatientCol: {
+    flex: 1,
+  },
+  previewReportMetaLine: {
+    fontSize: 12,
+    color: '#334155',
+    marginBottom: 4,
+  },
+  previewReportSectionTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  previewTable: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  previewTableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#cbd5e1',
+  },
+  previewTableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  previewCell: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: '#0f172a',
+    borderRightWidth: 1,
+    borderRightColor: '#e2e8f0',
+  },
+  previewHeadCell: {
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  previewVerifiedText: {
+    marginTop: 12,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   pdfPlaceholder: {
     flex: 1,

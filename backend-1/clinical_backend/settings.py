@@ -174,3 +174,25 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+
+# Clinic -> Lab patient profile sync
+LAB_PATIENT_SYNC_ENDPOINT = os.getenv(
+    "LAB_PATIENT_SYNC_ENDPOINT",
+    "http://127.0.0.1:8001/api/v1/integration/clinic/patients/upsert"
+).strip()
+LAB_PATIENT_SYNC_TOKEN = os.getenv("LAB_PATIENT_SYNC_TOKEN", "").strip()
+LAB_ORDER_INGEST_ENDPOINT = os.getenv(
+    "LAB_ORDER_INGEST_ENDPOINT",
+    "http://127.0.0.1:8001/api/v1/integration/clinic/lab-orders/ingest"
+).strip()
+LAB_ORDER_INGEST_TOKEN = os.getenv("LAB_ORDER_INGEST_TOKEN", "").strip()
+LAB_INSURANCE_SYNC_ENDPOINT = os.getenv(
+    "LAB_INSURANCE_SYNC_ENDPOINT",
+    "http://127.0.0.1:8001/api/v1/integration/clinic/insurance-providers/upsert"
+).strip()
+LAB_INSURANCE_SYNC_TOKEN = os.getenv("LAB_INSURANCE_SYNC_TOKEN", "").strip()
+LAB_CATALOG_ENDPOINT = os.getenv(
+    "LAB_CATALOG_ENDPOINT",
+    "http://127.0.0.1:8001/api/v1/integration/catalog"
+).strip()
+LAB_CATALOG_TOKEN = os.getenv("LAB_CATALOG_TOKEN", "").strip()

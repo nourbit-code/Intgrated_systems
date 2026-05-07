@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from datetime import time
 from datetime import date as current_date
+import uuid
 
 # -------------------------
 # Insurance Company
@@ -24,6 +25,7 @@ class Patient(models.Model):
     ]
     
     patient_id = models.AutoField(primary_key=True)
+    global_patient_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True)
     name = models.CharField(max_length=200)
     age = models.PositiveIntegerField(null=True, blank=True)
     gender = models.CharField(max_length=20, choices=GENDER_CHOICES, blank=True)
@@ -282,6 +284,7 @@ class Prescription(models.Model):
     prescription_id = models.AutoField(primary_key=True)
     medical_record = models.ForeignKey(MedicalRecord, on_delete=models.CASCADE, related_name='prescriptions')
     notes = models.TextField(blank=True)
+    ordered_tests_json = models.TextField(blank=True, default='[]')
     date = models.DateField(auto_now_add=True)
 
     medications = models.ManyToManyField(Medication, through='PrescriptionMedication', related_name='prescriptions')
@@ -302,6 +305,35 @@ class PrescriptionMedication(models.Model):
 
     def __str__(self):
         return f"{self.medication.name} in Presc {self.prescription_id}"
+
+
+class PharmacyDispatch(models.Model):
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('sent', 'Sent'),
+        ('acknowledged', 'Acknowledged'),
+        ('failed', 'Failed'),
+    ]
+
+    dispatch_id = models.AutoField(primary_key=True)
+    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='pharmacy_dispatches')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='queued')
+    idempotency_key = models.CharField(max_length=255, unique=True)
+    external_request_id = models.CharField(max_length=255, blank=True)
+    fhir_payload = models.JSONField(default=dict, blank=True)
+    response_payload = models.JSONField(default=dict, blank=True)
+    retry_count = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Dispatch {self.dispatch_id} - Prescription {self.prescription_id} ({self.status})"
 
 
 # -------------------------
@@ -506,6 +538,12 @@ class PatientFile(models.Model):
     tag = models.CharField(max_length=100, blank=True)  # e.g., 'Before', 'After', 'Lab Result'
     caption = models.TextField(blank=True)
     uploaded_by = models.ForeignKey(Doctor, on_delete=models.SET_NULL, null=True, blank=True)
+    source_system = models.CharField(max_length=100, blank=True)
+    external_report_id = models.CharField(max_length=255, blank=True, db_index=True)
+    fhir_payload = models.JSONField(default=dict, blank=True)
+    reviewed = models.BooleanField(default=False)
+    reviewed_by = models.ForeignKey(Doctor, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_files')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

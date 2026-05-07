@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, Touc
 import { Ionicons } from "@expo/vector-icons";
 import InsuranceSettingsContent from "../../components/InsuranceSettingsContent";
 import { useAuth } from "../context/AuthContext";
+import { useAutoRefresh } from "@/src/hooks/useAutoRefresh";
 import {
   createDoctor,
   createReceptionist,
@@ -156,6 +157,8 @@ export default function SettingsPage() {
   useEffect(() => {
     refreshSettingsData();
   }, [refreshSettingsData]);
+
+  useAutoRefresh(refreshSettingsData, { intervalMs: 45000 });
 
   useEffect(() => {
     const ensureAdmin = async () => {

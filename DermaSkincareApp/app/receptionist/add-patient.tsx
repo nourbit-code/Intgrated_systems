@@ -15,6 +15,7 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from '@expo/vector-icons';
 import { createPatient, getPatients, updatePatient, getInsuranceCompanies } from '../../src/api/receptionistApi';
+import { useAutoRefresh } from "@/src/hooks/useAutoRefresh";
 
 // --- COLOR PALETTE DEFINITION ---
 const PRIMARY_DARK = "#9B084D";
@@ -95,6 +96,12 @@ export default function AddPatient() {
     setLoading(true);
     Promise.all([fetchPatients(), fetchInsuranceCompanies()]).finally(() => setLoading(false));
   }, [fetchPatients, fetchInsuranceCompanies]);
+
+  const refreshData = useCallback(async () => {
+    await Promise.all([fetchPatients(), fetchInsuranceCompanies()]);
+  }, [fetchPatients, fetchInsuranceCompanies]);
+
+  useAutoRefresh(refreshData, { intervalMs: 30000 });
 
   // Pull to refresh
   const onRefresh = useCallback(() => {

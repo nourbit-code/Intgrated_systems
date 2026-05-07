@@ -7,10 +7,12 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils.decorators import method_decorator
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import json
 import requests
+import uuid
 from datetime import date
 
 
@@ -20,6 +22,397 @@ def _extract_ontology_acronym(ontology_link: str) -> str:
     # BioPortal ontology link ends with /ontologies/{ACRONYM}
     parts = ontology_link.rstrip('/').split('/')
     return parts[-1] if parts else ""
+
+
+def _patient_file_to_fhir_diagnostic_report(patient_file, patient):
+    """
+    Map local lab/document patient file to a lightweight FHIR DiagnosticReport shape.
+    """
+    file_name = patient_file.file_name or f"Lab Report {patient_file.file_id}"
+    mime_type = "application/pdf" if file_name.lower().endswith(".pdf") else "image/*"
+    status = "final"
+    category = "LAB"
+    code_text = patient_file.tag or "Lab Test/Scan"
+    issued = patient_file.created_at.isoformat() if patient_file.created_at else None
+
+    payload = patient_file.fhir_payload if isinstance(patient_file.fhir_payload, dict) else {}
+    observations = payload.get("observations") if isinstance(payload.get("observations"), list) else []
+
+    report = {
+        "resourceType": "DiagnosticReport",
+        "id": patient_file.external_report_id or str(patient_file.file_id),
+        "status": status,
+        "category": [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": category,
+                "display": "Laboratory"
+            }]
+        }],
+        "code": {
+            "text": code_text
+        },
+        "subject": {
+            "reference": f"Patient/{patient.patient_id}",
+            "display": patient.name
+        },
+        "effectiveDateTime": issued,
+        "issued": issued,
+        "presentedForm": [{
+            "contentType": mime_type,
+            "url": patient_file.file_url,
+            "title": file_name
+        }],
+        "conclusion": patient_file.caption or ""
+    }
+    if observations:
+        report["result"] = [{"reference": f"Observation/{obs.get('id')}"} for obs in observations if obs.get("id")]
+    return report
+
+
+def _extract_patient_from_fhir_subject(subject):
+    """
+    Resolve local patient from FHIR DiagnosticReport.subject.
+    Supports:
+    - reference: Patient/{id}
+    - identifier.value: local patient_id
+    """
+    if not isinstance(subject, dict):
+        return None
+
+    reference = subject.get("reference", "") or ""
+    if isinstance(reference, str) and reference.startswith("Patient/"):
+        patient_id_str = reference.split("/", 1)[1].strip()
+        if patient_id_str.isdigit():
+            return Patient.objects.filter(patient_id=int(patient_id_str)).first()
+
+    identifier = subject.get("identifier") or {}
+    if isinstance(identifier, dict):
+        value = str(identifier.get("value", "")).strip()
+        if value.isdigit():
+            return Patient.objects.filter(patient_id=int(value)).first()
+
+    return None
+
+
+def _ingest_diagnostic_report_resource(resource, observations_by_id=None):
+    """
+    Persist one FHIR DiagnosticReport as PatientFile (lab/document).
+    """
+    if not isinstance(resource, dict):
+        return None, "Invalid resource payload", False
+    if resource.get("resourceType") != "DiagnosticReport":
+        return None, "Only DiagnosticReport resources are supported", False
+
+    patient = _extract_patient_from_fhir_subject(resource.get("subject"))
+    if not patient:
+        return None, "Unable to resolve patient from DiagnosticReport.subject", False
+
+    presented_forms = resource.get("presentedForm") or []
+    form = presented_forms[0] if isinstance(presented_forms, list) and presented_forms else {}
+    content_type = (form.get("contentType") or "").lower()
+    file_url = form.get("url") or ""
+    file_name = form.get("title") or f"DiagnosticReport-{resource.get('id', 'external')}"
+
+    if not file_url:
+        return None, "DiagnosticReport.presentedForm[0].url is required", False
+
+    file_type = "document" if "pdf" in content_type else "lab"
+    code_text = ((resource.get("code") or {}).get("text") or "Lab Result").strip()
+    conclusion = resource.get("conclusion") or ""
+
+    report_id = str(resource.get("id", "")).strip()
+    if report_id:
+        existing = PatientFile.objects.filter(
+            patient=patient,
+            external_report_id=report_id
+        ).first()
+        if existing:
+            return existing, None, True
+
+    observations_by_id = observations_by_id or {}
+    linked_observations = []
+    for result_ref in (resource.get("result") or []):
+        ref = (result_ref or {}).get("reference", "")
+        if isinstance(ref, str) and ref.startswith("Observation/"):
+            obs_id = ref.split("/", 1)[1]
+            if obs_id in observations_by_id:
+                linked_observations.append(observations_by_id[obs_id])
+
+    created_file = PatientFile.objects.create(
+        patient=patient,
+        file_type=file_type,
+        file_url=file_url,
+        file_name=file_name,
+        tag=code_text[:100],
+        caption=conclusion,
+        source_system="fhir_lab_system",
+        external_report_id=report_id,
+        fhir_payload={
+            "diagnosticReport": resource,
+            "observations": linked_observations
+        }
+    )
+
+    return created_file, None, False
+
+
+def _build_fhir_medication_request_bundle(prescription):
+    medical_record = prescription.medical_record
+    patient = medical_record.patient if medical_record else None
+    doctor = medical_record.doctor if medical_record else None
+    authored_on = prescription.date.isoformat() if prescription.date else date.today().isoformat()
+
+    med_links = PrescriptionMedication.objects.filter(prescription=prescription).select_related('medication')
+    entries = []
+    for link in med_links:
+        med = link.medication
+        med_request_id = f"mr-{prescription.prescription_id}-{med.med_id}"
+        dosage_text = link.dosage or ""
+        duration_text = f"{link.duration_days} days" if link.duration_days else ""
+        if duration_text and dosage_text:
+            dosage_text = f"{dosage_text} for {duration_text}"
+        elif duration_text:
+            dosage_text = duration_text
+
+        entries.append({
+            "resource": {
+                "resourceType": "MedicationRequest",
+                "id": med_request_id,
+                "status": "active",
+                "intent": "order",
+                "subject": {
+                    "reference": f"Patient/{patient.patient_id}" if patient else "",
+                    "display": patient.name if patient else ""
+                },
+                "requester": {
+                    "reference": f"Practitioner/{doctor.doctor_id}" if doctor else "",
+                    "display": doctor.name if doctor else ""
+                },
+                "medicationCodeableConcept": {
+                    "text": med.name
+                },
+                "authoredOn": authored_on,
+                "dosageInstruction": [{
+                    "text": dosage_text or "As directed by physician"
+                }],
+                "note": [{
+                    "text": link.notes or ""
+                }] if link.notes else []
+            }
+        })
+
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "collection",
+        "identifier": {
+            "system": "urn:clinic:prescription",
+            "value": f"prescription-{prescription.prescription_id}"
+        },
+        "entry": entries
+    }
+    return bundle
+
+
+def _dispatch_prescription_to_pharmacy(prescription, idempotency_key=None):
+    idempotency_key = idempotency_key or f"rx-{prescription.prescription_id}"
+    existing = PharmacyDispatch.objects.filter(idempotency_key=idempotency_key).first()
+    if existing:
+        return existing, True
+
+    payload = _build_fhir_medication_request_bundle(prescription)
+    dispatch = PharmacyDispatch.objects.create(
+        prescription=prescription,
+        status='queued',
+        idempotency_key=idempotency_key,
+        fhir_payload=payload
+    )
+
+    dispatch = _attempt_dispatch(dispatch)
+    return dispatch, False
+
+
+def _attempt_dispatch(dispatch):
+    endpoint = (getattr(settings, "PHARMACY_FHIR_ENDPOINT", "") or "").strip()
+    token = (getattr(settings, "PHARMACY_FHIR_TOKEN", "") or "").strip()
+    headers = {"Content-Type": "application/fhir+json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    if not endpoint:
+        dispatch.status = 'sent'
+        dispatch.external_request_id = dispatch.external_request_id or str(uuid.uuid4())
+        dispatch.response_payload = {"message": "Dispatched in local/mock mode (no PHARMACY_FHIR_ENDPOINT configured)."}
+        dispatch.sent_at = timezone.now()
+        dispatch.save(update_fields=['status', 'external_request_id', 'response_payload', 'sent_at', 'updated_at'])
+        return dispatch
+
+    try:
+        response = requests.post(endpoint, json=dispatch.fhir_payload, headers=headers, timeout=20)
+        response_payload = {}
+        try:
+            response_payload = response.json()
+        except ValueError:
+            response_payload = {"raw": response.text}
+
+        if 200 <= response.status_code < 300:
+            dispatch.status = 'sent'
+            dispatch.external_request_id = response.headers.get("X-Request-ID", "") or dispatch.external_request_id or str(uuid.uuid4())
+            dispatch.response_payload = response_payload
+            dispatch.sent_at = timezone.now()
+            dispatch.last_error = ""
+            dispatch.save(update_fields=['status', 'external_request_id', 'response_payload', 'sent_at', 'last_error', 'updated_at'])
+        else:
+            dispatch.status = 'failed'
+            dispatch.retry_count = (dispatch.retry_count or 0) + 1
+            dispatch.last_error = f"HTTP {response.status_code}"
+            dispatch.response_payload = response_payload
+            dispatch.save(update_fields=['status', 'retry_count', 'last_error', 'response_payload', 'updated_at'])
+    except requests.RequestException as exc:
+        dispatch.status = 'failed'
+        dispatch.retry_count = (dispatch.retry_count or 0) + 1
+        dispatch.last_error = str(exc)
+        dispatch.save(update_fields=['status', 'retry_count', 'last_error', 'updated_at'])
+
+    return dispatch
+
+
+def _calculate_patient_dob_from_age(age_value):
+    try:
+        age = int(age_value)
+    except (TypeError, ValueError):
+        return None
+    if age < 0:
+        return None
+    today = date.today()
+    return date(max(1900, today.year - age), 1, 1).isoformat()
+
+
+def _build_lab_patient_sync_payload(patient):
+    patient_allergies = PatientAllergy.objects.filter(patient=patient).select_related("allergy")
+    allergies = [pa.allergy.name for pa in patient_allergies]
+    medical_history = [h.strip() for h in (patient.medical_history or "").split(",") if h.strip()]
+    surgeries = [s.strip() for s in (patient.surgeries or "").split(",") if s.strip()]
+    return {
+        "global_patient_id": str(patient.global_patient_id),
+        "clinic_patient_id": str(patient.patient_id),
+        "name": patient.name or "",
+        "gender": (patient.gender or "").lower() or "other",
+        "phone": patient.phone or "",
+        "email": patient.email or "",
+        "dob": _calculate_patient_dob_from_age(patient.age),
+        "allergies": allergies,
+        "medical_history": medical_history,
+        "surgeries": surgeries,
+        "notes": patient.notes or "",
+        "has_insurance": bool(patient.has_insurance and patient.is_insurance_active(date.today())),
+        "insurance_provider": patient.insurance_company.name if patient.insurance_company else "",
+        "insurance_policy_number": "",
+        "insurance_member_id": patient.insurance_member_id or "",
+        "insurance_expiry": patient.insurance_valid_to.isoformat() if patient.insurance_valid_to else "",
+    }
+
+
+def _push_patient_profile_to_lab(patient):
+    endpoint = (getattr(settings, "LAB_PATIENT_SYNC_ENDPOINT", "") or "").strip()
+    if not endpoint:
+        return
+    token = (getattr(settings, "LAB_PATIENT_SYNC_TOKEN", "") or "").strip()
+    headers = {"Content-Type": "application/json", "X-Source-System": "CLINIC_SYSTEM"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    payload = _build_lab_patient_sync_payload(patient)
+    requests.post(endpoint, json=payload, headers=headers, timeout=20)
+
+
+def _build_lab_insurance_sync_payload():
+    providers = []
+    for company in InsuranceCompany.objects.all().order_by("name"):
+        providers.append({
+            "name": company.name,
+            "discount_percent": float(company.discount_percent),
+            "is_active": True,
+        })
+    return {"providers": providers}
+
+
+def _push_insurance_providers_to_lab():
+    endpoint = (getattr(settings, "LAB_INSURANCE_SYNC_ENDPOINT", "") or "").strip()
+    if not endpoint:
+        return {"success": False, "error": "LAB_INSURANCE_SYNC_ENDPOINT is not configured"}
+    token = (getattr(settings, "LAB_INSURANCE_SYNC_TOKEN", "") or "").strip()
+    headers = {"Content-Type": "application/json", "X-Source-System": "CLINIC_SYSTEM"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    payload = _build_lab_insurance_sync_payload()
+    response = requests.post(endpoint, json=payload, headers=headers, timeout=20)
+    body = {}
+    try:
+        body = response.json()
+    except Exception:
+        body = {"raw": response.text}
+    return {
+        "success": 200 <= response.status_code < 300,
+        "status_code": response.status_code,
+        "payload": payload,
+        "response": body,
+    }
+
+
+def _build_fhir_service_request_bundle(patient, doctor, orders):
+    entries = []
+    for idx, order in enumerate(orders):
+        name = str(order.get("name") or "").strip()
+        if not name:
+            continue
+        category = str(order.get("category") or "LAB_TEST").strip().upper()
+        code = str(order.get("code") or name.upper().replace(" ", "_")).strip()
+        note = str(order.get("notes") or "").strip()
+        sr_id = f"sr-{patient.patient_id}-{idx+1}-{uuid.uuid4().hex[:8]}"
+        entries.append({
+            "resource": {
+                "resourceType": "ServiceRequest",
+                "id": sr_id,
+                "status": "active",
+                "intent": "order",
+                "category": [{"text": category}],
+                "code": {"text": name, "coding": [{"code": code, "display": name}]},
+                "subject": {
+                    "reference": f"Patient/{patient.patient_id}",
+                    "display": patient.name,
+                    "identifier": {"value": str(patient.patient_id)}
+                },
+                "requester": {
+                    "reference": f"Practitioner/{doctor.doctor_id}" if doctor else "",
+                    "display": doctor.name if doctor else ""
+                },
+                "authoredOn": date.today().isoformat(),
+                "note": [{"text": note}] if note else []
+            }
+        })
+    return {"resourceType": "Bundle", "type": "collection", "entry": entries}
+
+
+def _dispatch_orders_to_lab(patient, doctor, orders):
+    endpoint = (getattr(settings, "LAB_ORDER_INGEST_ENDPOINT", "") or "").strip()
+    if not endpoint:
+        return {"success": False, "error": "LAB_ORDER_INGEST_ENDPOINT not configured"}
+    bundle = _build_fhir_service_request_bundle(patient, doctor, orders)
+    if not bundle.get("entry"):
+        return {"success": False, "error": "No valid orders to dispatch"}
+    # DRF endpoint on lab side accepts JSON parser by default.
+    headers = {"Content-Type": "application/json", "X-Source-System": "CLINIC_SYSTEM"}
+    token = (getattr(settings, "LAB_ORDER_INGEST_TOKEN", "") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    response = requests.post(endpoint, json=bundle, headers=headers, timeout=20)
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {"raw": response.text}
+    if not (200 <= response.status_code < 300):
+        return {"success": False, "error": f"Lab ingest failed ({response.status_code})", "payload": payload}
+    return {"success": True, "payload": payload}
 
 
 @api_view(['GET'])
@@ -217,9 +610,261 @@ def login(request):
         status=status.HTTP_401_UNAUTHORIZED
     )
 
+
+@api_view(['POST'])
+@csrf_exempt
+def ingest_fhir_lab_results(request):
+    """
+    Ingest endpoint for external lab system using FHIR payloads.
+    Accepts:
+    - DiagnosticReport resource
+    - Bundle with entry[].resource DiagnosticReport
+    """
+    configured_token = (getattr(settings, "LAB_INGEST_TOKEN", "") or "").strip()
+    if configured_token:
+        auth_header = request.headers.get("Authorization", "")
+        expected = f"Bearer {configured_token}"
+        if auth_header != expected:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    payload = request.data
+    if not isinstance(payload, dict):
+        return Response({"error": "Invalid JSON payload"}, status=status.HTTP_400_BAD_REQUEST)
+
+    resources = []
+    observations_by_id = {}
+    resource_type = payload.get("resourceType")
+    if resource_type == "DiagnosticReport":
+        resources = [payload]
+    elif resource_type == "Bundle":
+        entries = payload.get("entry") or []
+        for entry in entries:
+            resource = (entry or {}).get("resource")
+            if not isinstance(resource, dict):
+                continue
+            if resource.get("resourceType") == "DiagnosticReport":
+                resources.append(resource)
+            if resource.get("resourceType") == "Observation":
+                obs_id = str(resource.get("id", "")).strip()
+                if obs_id:
+                    observations_by_id[obs_id] = resource
+    else:
+        return Response(
+            {"error": "Unsupported FHIR resourceType. Use DiagnosticReport or Bundle."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not resources:
+        return Response({"error": "No DiagnosticReport resources found"}, status=status.HTTP_400_BAD_REQUEST)
+
+    created_ids = []
+    duplicate_ids = []
+    errors = []
+    for idx, resource in enumerate(resources):
+        created_file, err, is_duplicate = _ingest_diagnostic_report_resource(resource, observations_by_id=observations_by_id)
+        if err:
+            errors.append({"index": idx, "error": err, "id": resource.get("id")})
+            continue
+        if is_duplicate:
+            duplicate_ids.append(created_file.file_id)
+        else:
+            created_ids.append(created_file.file_id)
+
+    has_success = len(created_ids) > 0 or len(duplicate_ids) > 0
+    status_code = status.HTTP_201_CREATED if len(created_ids) > 0 else (status.HTTP_200_OK if len(duplicate_ids) > 0 else status.HTTP_400_BAD_REQUEST)
+    return Response({
+        "success": has_success,
+        "created_count": len(created_ids),
+        "created_file_ids": created_ids,
+        "duplicate_file_ids": duplicate_ids,
+        "observations_received": len(observations_by_id),
+        "errors": errors
+    }, status=status_code)
+
+
+@api_view(['PATCH'])
+@csrf_exempt
+def mark_lab_result_reviewed(request, file_id):
+    patient_file = get_object_or_404(PatientFile, pk=file_id, file_type__in=['lab', 'document'])
+    doctor_id = request.data.get('doctor_id')
+    doctor = Doctor.objects.filter(pk=doctor_id).first() if doctor_id else None
+
+    patient_file.reviewed = True
+    patient_file.reviewed_by = doctor
+    patient_file.reviewed_at = timezone.now()
+    patient_file.save(update_fields=['reviewed', 'reviewed_by', 'reviewed_at'])
+
+    return Response({
+        "success": True,
+        "file_id": patient_file.file_id,
+        "reviewed": True,
+        "reviewed_at": patient_file.reviewed_at.isoformat(),
+        "reviewed_by": doctor.name if doctor else ""
+    })
+
+
+@api_view(['POST'])
+@csrf_exempt
+def dispatch_prescription_to_pharmacy(request):
+    prescription_id = request.data.get("prescription_id")
+    if not prescription_id:
+        return Response({"error": "prescription_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    prescription = get_object_or_404(Prescription, pk=prescription_id)
+    idempotency_key = request.data.get("idempotency_key") or f"rx-{prescription.prescription_id}"
+    dispatch, duplicate = _dispatch_prescription_to_pharmacy(prescription, idempotency_key=idempotency_key)
+
+    return Response({
+        "success": True,
+        "duplicate": duplicate,
+        "dispatch": PharmacyDispatchSerializer(dispatch).data
+    }, status=status.HTTP_200_OK if duplicate else status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@csrf_exempt
+def dispatch_lab_orders(request):
+    patient_id = request.data.get("patient_id")
+    doctor_id = request.data.get("doctor_id")
+    orders = request.data.get("orders") or []
+    if not patient_id:
+        return Response({"error": "patient_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+    if not isinstance(orders, list) or not orders:
+        return Response({"error": "orders list is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    patient = get_object_or_404(Patient, pk=patient_id)
+    doctor = Doctor.objects.filter(pk=doctor_id).first() if doctor_id else None
+
+    result = _dispatch_orders_to_lab(patient, doctor, orders)
+    if not result.get("success"):
+        return Response(result, status=status.HTTP_502_BAD_GATEWAY)
+    return Response({"success": True, "result": result.get("payload", {})}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@csrf_exempt
+def dispatch_insurance_providers_to_lab(request):
+    result = _push_insurance_providers_to_lab()
+    if not result.get("success"):
+        return Response(result, status=status.HTTP_502_BAD_GATEWAY)
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@csrf_exempt
+def get_lab_catalog(request):
+    endpoint = (getattr(settings, "LAB_CATALOG_ENDPOINT", "") or "").strip()
+    if not endpoint:
+        return Response({"success": False, "error": "LAB_CATALOG_ENDPOINT is not configured"}, status=status.HTTP_400_BAD_REQUEST)
+    token = (getattr(settings, "LAB_CATALOG_TOKEN", "") or "").strip()
+    headers = {"X-Source-System": "CLINIC_SYSTEM"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = requests.get(endpoint, headers=headers, timeout=20)
+        data = response.json() if response.content else {}
+        if response.status_code >= 400:
+            return Response({"success": False, "error": data}, status=status.HTTP_502_BAD_GATEWAY)
+        return Response(data, status=status.HTTP_200_OK)
+    except requests.RequestException as exc:
+        return Response({"success": False, "error": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
 class PatientViewSet(viewsets.ModelViewSet):
     queryset = Patient.objects.all().order_by('-created_at')
     serializer_class = PatientSerializer
+
+    def _sync_patient_to_lab_safe(self, patient):
+        try:
+            _push_patient_profile_to_lab(patient)
+        except Exception as exc:
+            print(f"[PatientSync] patient_id={patient.patient_id} sync failed: {exc}")
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        patient_id = response.data.get("patient_id")
+        if patient_id:
+            patient = Patient.objects.filter(patient_id=patient_id).first()
+            if patient:
+                self._sync_patient_to_lab_safe(patient)
+        return response
+
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        patient_id = kwargs.get("pk")
+        if patient_id:
+            patient = Patient.objects.filter(patient_id=patient_id).first()
+            if patient:
+                self._sync_patient_to_lab_safe(patient)
+        return response
+
+    @action(detail=False, methods=['post'])
+    def sync_all_to_lab(self, request):
+        """
+        Bulk sync all clinic patients to lab system in one call.
+        Optional JSON body:
+        {
+            "limit": 100,          # optional positive int
+            "patient_ids": [1,2]   # optional list of clinic patient_id values
+        }
+        """
+        endpoint = (getattr(settings, "LAB_PATIENT_SYNC_ENDPOINT", "") or "").strip()
+        if not endpoint:
+            return Response(
+                {
+                    "success": False,
+                    "error": "LAB_PATIENT_SYNC_ENDPOINT is not configured"
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        qs = Patient.objects.all().order_by("patient_id")
+
+        requested_ids = request.data.get("patient_ids") if isinstance(request.data, dict) else None
+        if isinstance(requested_ids, list) and requested_ids:
+            normalized_ids = []
+            for raw_id in requested_ids:
+                try:
+                    normalized_ids.append(int(raw_id))
+                except (TypeError, ValueError):
+                    continue
+            if normalized_ids:
+                qs = qs.filter(patient_id__in=normalized_ids)
+
+        limit_raw = request.data.get("limit") if isinstance(request.data, dict) else None
+        if limit_raw is not None:
+            try:
+                limit = int(limit_raw)
+                if limit > 0:
+                    qs = qs[:limit]
+            except (TypeError, ValueError):
+                pass
+
+        total = qs.count() if hasattr(qs, "count") else len(qs)
+        success_count = 0
+        failed = []
+
+        for patient in qs:
+            try:
+                _push_patient_profile_to_lab(patient)
+                success_count += 1
+            except Exception as exc:
+                failed.append({
+                    "patient_id": patient.patient_id,
+                    "name": patient.name,
+                    "error": str(exc),
+                })
+
+        return Response(
+            {
+                "success": len(failed) == 0,
+                "endpoint": endpoint,
+                "total": total,
+                "synced": success_count,
+                "failed_count": len(failed),
+                "failed": failed[:50],
+            },
+            status=status.HTTP_200_OK
+        )
 
     @action(detail=True, methods=['get'])
     def history(self, request, pk=None):
@@ -290,6 +935,69 @@ class PatientViewSet(viewsets.ModelViewSet):
             'created_at': patient.created_at.strftime('%Y-%m-%d')
         })
 
+    @action(detail=True, methods=['get'])
+    def lab_results(self, request, pk=None):
+        """
+        FHIR-oriented lab result feed for diagnosis page.
+        Returns a FHIR Bundle (DiagnosticReport entries) plus a simplified UI list.
+        By default this exposes only externally ingested lab reports (lab system feed)
+        so the diagnosis page can reflect interoperability-ready results.
+        Optional query params:
+        - include_local=1 : include local/manual lab uploads
+        - status=ready|reviewed|all : filter result lifecycle status (default: all)
+        """
+        patient = self.get_object()
+        include_local = str(request.query_params.get("include_local", "")).lower() in {"1", "true", "yes"}
+        status_filter = str(request.query_params.get("status", "all")).lower().strip()
+
+        file_qs = PatientFile.objects.filter(patient=patient, file_type__in=['lab', 'document'])
+
+        if not include_local:
+            file_qs = file_qs.filter(source_system__in=['lab_system', 'fhir_lab_system'])
+
+        if status_filter == "ready":
+            file_qs = file_qs.filter(reviewed=False)
+        elif status_filter == "reviewed":
+            file_qs = file_qs.filter(reviewed=True)
+
+        file_qs = file_qs.order_by('-created_at')
+
+        entries = []
+        ui_results = []
+        for f in file_qs:
+            diagnostic_report = _patient_file_to_fhir_diagnostic_report(f, patient)
+            entries.append({
+                "resource": diagnostic_report
+            })
+            ui_results.append({
+                "id": f.file_id,
+                "name": f.file_name or f"Lab Report {f.file_id}",
+                "uri": f.file_url,
+                "mimeType": diagnostic_report["presentedForm"][0]["contentType"],
+                "timestamp": f.created_at.strftime('%Y-%m-%d %H:%M') if f.created_at else "",
+                "status": "reviewed" if f.reviewed else "ready",
+                "source": f.source_system or "lab_system",
+                "fhir_resource_type": "DiagnosticReport",
+                "fhir_id": f.external_report_id or str(f.file_id),
+                "reviewed": f.reviewed,
+                "reviewed_at": f.reviewed_at.isoformat() if f.reviewed_at else None,
+                "observation_count": len((f.fhir_payload or {}).get("observations", [])) if isinstance(f.fhir_payload, dict) else 0,
+            })
+
+        return Response({
+            "resourceType": "Bundle",
+            "type": "searchset",
+            "total": len(entries),
+            "entry": entries,
+            "results": ui_results,
+            "feed": {
+                "include_local": include_local,
+                "status": status_filter if status_filter in {"ready", "reviewed", "all"} else "all",
+                "ready_count": len([r for r in ui_results if r.get("status") == "ready"]),
+                "reviewed_count": len([r for r in ui_results if r.get("status") == "reviewed"]),
+            }
+        })
+
     @method_decorator(csrf_exempt)
     @action(detail=True, methods=['post'])
     def save_diagnosis(self, request, pk=None):
@@ -330,6 +1038,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         location_labels = request.data.get('location_labels', [])
         severity = request.data.get('severity', '')
         medications_data = request.data.get('medications', [])
+        ordered_tests_data = request.data.get('ordered_tests', [])
         photos_data = request.data.get('photos', [])
         labs_data = request.data.get('labs', [])
         
@@ -358,12 +1067,13 @@ class PatientViewSet(viewsets.ModelViewSet):
             severity=severity or ''
         )
         
-        # Create Prescription if there are medications
+        # Create Prescription if there are medications or ordered tests/scans
         prescription = None
-        if medications_data:
+        if medications_data or ordered_tests_data:
             prescription = Prescription.objects.create(
                 medical_record=medical_record,
-                notes=notes
+                notes=notes,
+                ordered_tests_json=json.dumps(ordered_tests_data) if isinstance(ordered_tests_data, list) else '[]'
             )
             
             # Add medications
@@ -500,6 +1210,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         # Return updated patient info
         patient_allergies = PatientAllergy.objects.filter(patient=patient).select_related('allergy')
         allergies = [pa.allergy.name for pa in patient_allergies]
+        self._sync_patient_to_lab_safe(patient)
         
         return Response({
             'success': True,
@@ -602,6 +1313,29 @@ class PatientViewSet(viewsets.ModelViewSet):
                         'frequency': '1×/day',  # Default
                         'duration': f"{pm.duration_days} days" if pm.duration_days else '',
                         'notes': pm.notes
+                    })
+
+                # Include ordered lab tests/scans as prescription-like rows for visit history + download
+                ordered_tests = []
+                try:
+                    ordered_tests = json.loads(prescription.ordered_tests_json or '[]')
+                except Exception:
+                    ordered_tests = []
+
+                for idx, item in enumerate(ordered_tests):
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get('name') or '').strip()
+                    if not name:
+                        continue
+                    category = str(item.get('category') or 'LAB_TEST').replace('_', ' ').title()
+                    item_notes = str(item.get('notes') or '').strip()
+                    prescriptions.append({
+                        'medication': f"[{category}] {name}",
+                        'dose': category,
+                        'frequency': '',
+                        'duration': '',
+                        'notes': item_notes
                     })
             
             # Get files for this record
@@ -1326,6 +2060,60 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
         pm.duration_days = duration_days
         pm.save()
         return Response({'status': 'medication added'})
+
+    @action(detail=True, methods=['post'])
+    def dispatch_to_pharmacy(self, request, pk=None):
+        prescription = self.get_object()
+        idempotency_key = request.data.get("idempotency_key") or f"rx-{prescription.prescription_id}"
+        dispatch, duplicate = _dispatch_prescription_to_pharmacy(prescription, idempotency_key=idempotency_key)
+        return Response({
+            "success": True,
+            "duplicate": duplicate,
+            "dispatch": PharmacyDispatchSerializer(dispatch).data
+        }, status=status.HTTP_200_OK if duplicate else status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def pharmacy_dispatch_status(self, request, pk=None):
+        prescription = self.get_object()
+        dispatches = PharmacyDispatch.objects.filter(prescription=prescription).order_by('-created_at')
+        latest = dispatches.first()
+        return Response({
+            "prescription_id": prescription.prescription_id,
+            "latest": PharmacyDispatchSerializer(latest).data if latest else None,
+            "history": PharmacyDispatchSerializer(dispatches, many=True).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def retry_pharmacy_dispatch(self, request, pk=None):
+        prescription = self.get_object()
+        dispatch = PharmacyDispatch.objects.filter(prescription=prescription).order_by('-created_at').first()
+        if not dispatch:
+            return Response({"error": "No dispatch found for this prescription"}, status=status.HTTP_404_NOT_FOUND)
+
+        dispatch = _attempt_dispatch(dispatch)
+        return Response({
+            "success": True,
+            "dispatch": PharmacyDispatchSerializer(dispatch).data
+        })
+
+    @action(detail=True, methods=['post'])
+    def acknowledge_pharmacy_dispatch(self, request, pk=None):
+        prescription = self.get_object()
+        dispatch = PharmacyDispatch.objects.filter(prescription=prescription).order_by('-created_at').first()
+        if not dispatch:
+            return Response({"error": "No dispatch found for this prescription"}, status=status.HTTP_404_NOT_FOUND)
+
+        external_request_id = request.data.get("external_request_id")
+        if external_request_id:
+            dispatch.external_request_id = external_request_id
+        dispatch.status = 'acknowledged'
+        dispatch.acknowledged_at = timezone.now()
+        dispatch.last_error = ""
+        dispatch.save(update_fields=['status', 'acknowledged_at', 'external_request_id', 'last_error', 'updated_at'])
+        return Response({
+            "success": True,
+            "dispatch": PharmacyDispatchSerializer(dispatch).data
+        })
 
 
 class TreatmentPlanViewSet(viewsets.ModelViewSet):

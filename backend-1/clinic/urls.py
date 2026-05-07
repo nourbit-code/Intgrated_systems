@@ -27,6 +27,12 @@ router.register(r'stock-transactions', views.StockTransactionViewSet)
 
 urlpatterns = [
     path('login/', views.login, name='login'),
+    path('integration/fhir/lab-results/ingest/', views.ingest_fhir_lab_results, name='ingest_fhir_lab_results'),
+    path('integration/fhir/lab-orders/dispatch/', views.dispatch_lab_orders, name='dispatch_lab_orders'),
+    path('integration/fhir/insurance-providers/dispatch/', views.dispatch_insurance_providers_to_lab, name='dispatch_insurance_providers_to_lab'),
+    path('integration/fhir/lab-catalog/', views.get_lab_catalog, name='get_lab_catalog'),
+    path('integration/fhir/pharmacy/dispatch/', views.dispatch_prescription_to_pharmacy, name='dispatch_prescription_to_pharmacy'),
+    path('lab-results/<int:file_id>/review/', views.mark_lab_result_reviewed, name='mark_lab_result_reviewed'),
     path('ontology/search/', views.ontology_search, name='ontology_search'),
     path('reports/analytics/', views.report_analytics, name='report_analytics'),
     path('reports/appointments/', views.appointments_report, name='appointments_report'),

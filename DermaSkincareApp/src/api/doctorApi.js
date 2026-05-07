@@ -232,6 +232,115 @@ export const getMedications = async (params = {}) => {
 };
 
 /**
+ * Get patient lab results in FHIR-oriented format (DiagnosticReport bundle + ui results)
+ * @param {number} patientId - The patient's ID
+ * @returns {Promise<Object>} Lab results payload
+ */
+export const getPatientLabResults = async (patientId, params = {}) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/patients/${patientId}/lab_results/`, {
+      params: {
+        status: params.status || 'all',
+        include_local: params.includeLocal ? 1 : 0,
+      },
+    });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error fetching patient lab results:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch patient lab results'
+    };
+  }
+};
+
+/**
+ * Mark a lab result as reviewed by doctor
+ * @param {number} fileId - PatientFile id
+ * @param {number} doctorId - Doctor id
+ * @returns {Promise<Object>}
+ */
+export const markLabResultReviewed = async (fileId, doctorId) => {
+  try {
+    const response = await axios.patch(`${API_BASE_URL}/lab-results/${fileId}/review/`, {
+      doctor_id: doctorId
+    });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error marking lab result reviewed:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to mark lab result reviewed'
+    };
+  }
+};
+
+/**
+ * Dispatch prescription to pharmacy as FHIR MedicationRequest bundle
+ * @param {number} prescriptionId
+ * @param {string} [idempotencyKey]
+ * @returns {Promise<Object>}
+ */
+export const dispatchPrescriptionToPharmacy = async (prescriptionId, idempotencyKey) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/integration/fhir/pharmacy/dispatch/`, {
+      prescription_id: prescriptionId,
+      idempotency_key: idempotencyKey
+    });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error dispatching prescription to pharmacy:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to dispatch prescription'
+    };
+  }
+};
+
+/**
+ * Get pharmacy dispatch status for a prescription
+ * @param {number} prescriptionId
+ * @returns {Promise<Object>}
+ */
+export const getPharmacyDispatchStatus = async (prescriptionId) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/prescriptions/${prescriptionId}/pharmacy_dispatch_status/`);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error fetching pharmacy dispatch status:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch pharmacy dispatch status'
+    };
+  }
+};
+
+export const retryPharmacyDispatch = async (prescriptionId) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/prescriptions/${prescriptionId}/retry_pharmacy_dispatch/`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    console.error('[DoctorAPI] Error retrying pharmacy dispatch:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to retry pharmacy dispatch'
+    };
+  }
+};
+
+/**
  * Get medication suggestions based on disease label
  * @param {Object} params - Query params (q, limit)
  * @returns {Promise<Object>} List of medications
@@ -443,6 +552,52 @@ export const addSurgeryType = async (name) => {
   }
 };
 
+/**
+ * Dispatch doctor-ordered lab/scan requests to lab system
+ * @param {number} patientId
+ * @param {number} doctorId
+ * @param {Array<{name:string, category:string, code?:string, notes?:string}>} orders
+ * @returns {Promise<Object>}
+ */
+export const dispatchLabOrders = async (patientId, doctorId, orders = []) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/integration/fhir/lab-orders/dispatch/`, {
+      patient_id: patientId,
+      doctor_id: doctorId,
+      orders,
+    });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error dispatching lab orders:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to dispatch lab orders'
+    };
+  }
+};
+
+/**
+ * Get live lab catalog (lab tests + scans) from integrated lab system
+ */
+export const getLabCatalog = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/integration/fhir/lab-catalog/`);
+    return {
+      success: true,
+      data: response.data,
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error fetching lab catalog:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch lab catalog',
+    };
+  }
+};
+
 export default {
   getDoctorDashboard,
   getAppointmentsByDate,
@@ -452,6 +607,11 @@ export default {
   getDoctorDetails,
   getDoctorPatients,
   getPatientDetails,
+  getPatientLabResults,
+  markLabResultReviewed,
+  dispatchPrescriptionToPharmacy,
+  getPharmacyDispatchStatus,
+  retryPharmacyDispatch,
   saveDiagnosis,
   getMedications,
   getPatientProfile,
@@ -462,4 +622,6 @@ export default {
   addMedicalCondition,
   getSurgeryTypes,
   addSurgeryType,
+  dispatchLabOrders,
+  getLabCatalog,
 };

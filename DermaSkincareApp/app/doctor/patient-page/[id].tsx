@@ -27,6 +27,7 @@ import {
   addSurgeryType 
 } from "../../../src/api/doctorApi";
 import { useAuth } from "../../context/AuthContext";
+import { useAutoRefresh } from "@/src/hooks/useAutoRefresh";
 
 // Conditionally import WebView only for native platforms
 let WebView: any = null;
@@ -162,6 +163,31 @@ export default function DoctorPatientPage() {
   const [photoSortOrder, setPhotoSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [labSortOrder, setLabSortOrder] = useState<'newest' | 'oldest'>('newest');
 
+  const structuredDocReport = useMemo(() => {
+    const raw = selectedDoc?.url || '';
+    if (!raw.startsWith('data:text/plain;base64,')) return null;
+    try {
+      const base64 = raw.replace('data:text/plain;base64,', '');
+      const decoded = atob(base64);
+      const parsed = JSON.parse(decoded);
+      const samples = Array.isArray(parsed.samples) ? parsed.samples : [];
+      const firstSample = samples[0] || {};
+      const rows = Array.isArray(firstSample.rows) ? firstSample.rows : [];
+      if (!rows.length) return null;
+      return {
+        testName: parsed.test_name || selectedDoc?.name || 'Lab Report',
+        generatedAt: parsed.generated_at || '',
+        sampleId: firstSample.sample_id || '',
+        specimenType: firstSample.specimen_type || '',
+        tubeColor: firstSample.tube_color || '',
+        volume: firstSample.volume_ml || '',
+        rows,
+      };
+    } catch {
+      return null;
+    }
+  }, [selectedDoc]);
+
   // Load patient data
   const loadPatientData = useCallback(async () => {
     if (!patientId) return;
@@ -283,7 +309,20 @@ export default function DoctorPatientPage() {
       loadMedicalConditions();
       loadSurgeryTypes();
     }
-  }, [authLoading, patientId, loadPatientData, loadAllergies]);
+  }, [authLoading, patientId, loadPatientData, loadAllergies, loadMedicalConditions, loadSurgeryTypes]);
+
+  const refreshPatientContext = useCallback(async () => {
+    if (!authLoading && patientId) {
+      await Promise.all([
+        loadPatientData(),
+        loadAllergies(),
+        loadMedicalConditions(),
+        loadSurgeryTypes(),
+      ]);
+    }
+  }, [authLoading, patientId, loadPatientData, loadAllergies, loadMedicalConditions, loadSurgeryTypes]);
+
+  useAutoRefresh(refreshPatientContext, { intervalMs: 30000 });
   
   // Start editing
   const handleStartEdit = () => {
@@ -1090,7 +1129,54 @@ export default function DoctorPatientPage() {
                 
                 {/* Document Content */}
                 <View style={styles.docModalContent}>
-                  {selectedDoc?.url ? (
+                  {structuredDocReport ? (
+                    <ScrollView style={styles.structuredWrap}>
+                      <View style={styles.structuredTopRow}>
+                        <Text style={styles.structuredMeta}>
+                          {structuredDocReport.generatedAt ? new Date(structuredDocReport.generatedAt).toLocaleString('en-EG') : ''}
+                        </Text>
+                        <Text style={[styles.structuredMeta, { fontWeight: '700' }]}>
+                          Lab Report - {structuredDocReport.sampleId || 'N/A'}
+                        </Text>
+                      </View>
+                      <Text style={styles.structuredTitle}>Lab Report</Text>
+                      <View style={styles.structuredGrid}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.structuredMeta}>Patient: {patient?.name || 'N/A'}</Text>
+                          <Text style={styles.structuredMeta}>Gender: {patient?.gender || 'N/A'}</Text>
+                          <Text style={styles.structuredMeta}>Order: {patient?.id || 'N/A'}</Text>
+                          <Text style={styles.structuredMeta}>
+                            Specimen: {structuredDocReport.specimenType || 'N/A'} · {structuredDocReport.tubeColor || 'N/A'} · {structuredDocReport.volume || 'N/A'} ml
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.structuredMeta}>Age: {patient?.age ?? 'N/A'}</Text>
+                          <Text style={styles.structuredMeta}>Number: {patient?.phone || 'N/A'}</Text>
+                          <Text style={styles.structuredMeta}>Sample: {structuredDocReport.sampleId || 'N/A'}</Text>
+                        </View>
+                      </View>
+                      <Text style={styles.structuredSection}>{structuredDocReport.testName}</Text>
+                      <View style={styles.structuredTable}>
+                        <View style={styles.structuredHeadRow}>
+                          <Text style={[styles.structuredCell, styles.structuredHeadCell, { flex: 2 }]}>Parameter</Text>
+                          <Text style={[styles.structuredCell, styles.structuredHeadCell, { flex: 1.2 }]}>Result</Text>
+                          <Text style={[styles.structuredCell, styles.structuredHeadCell, { flex: 1.2 }]}>Unit</Text>
+                          <Text style={[styles.structuredCell, styles.structuredHeadCell, { flex: 1.6 }]}>Range</Text>
+                          <Text style={[styles.structuredCell, styles.structuredHeadCell, { flex: 1.2 }]}>Flag</Text>
+                        </View>
+                        {structuredDocReport.rows.map((row: any, idx: number) => (
+                          <View key={idx} style={styles.structuredRow}>
+                            <Text style={[styles.structuredCell, { flex: 2 }]}>{row.parameter || '-'}</Text>
+                            <Text style={[styles.structuredCell, { flex: 1.2 }]}>{row.value || '-'}</Text>
+                            <Text style={[styles.structuredCell, { flex: 1.2 }]}>{row.unit || '-'}</Text>
+                            <Text style={[styles.structuredCell, { flex: 1.6 }]}>{row.min != null && row.max != null ? `${row.min}-${row.max}` : (row.reference || '-')}</Text>
+                            <Text style={[styles.structuredCell, { flex: 1.2 }]}>{row.flag || '-'}</Text>
+                          </View>
+                        ))}
+                      </View>
+                      <Text style={styles.structuredVerify}>Verified By: Lab Technician</Text>
+                    </ScrollView>
+                  ) : selectedDoc?.url ? (
                     // Use iframe for web platform
                     Platform.OS === 'web' ? (
                       <iframe
@@ -1175,9 +1261,81 @@ export default function DoctorPatientPage() {
                     style={styles.openExternalBtn}
                     onPress={() => {
                       if (selectedDoc?.url) {
-                        // For data URLs, we need to handle them differently
-                        if (selectedDoc.url.startsWith('data:')) {
-                          // Create a link element to download
+                        // For structured synced text reports, open print-ready page for Save as PDF.
+                        if (Platform.OS === 'web' && structuredDocReport) {
+                          const rowsHtml = structuredDocReport.rows
+                            .map((row: any) => `
+                              <tr>
+                                <td>${row.parameter || '-'}</td>
+                                <td>${row.value || '-'}</td>
+                                <td>${row.unit || '-'}</td>
+                                <td>${row.min != null && row.max != null ? `${row.min}-${row.max}` : (row.reference || '-')}</td>
+                                <td>${row.flag || '-'}</td>
+                              </tr>
+                            `)
+                            .join('');
+                          const html = `
+                            <!doctype html>
+                            <html>
+                              <head>
+                                <meta charset="utf-8" />
+                                <title>${structuredDocReport.testName} - Lab Report</title>
+                                <style>
+                                  body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+                                  h1 { font-size: 42px; margin: 0 0 10px; }
+                                  h2 { font-size: 34px; margin: 18px 0 10px; }
+                                  .meta { font-size: 14px; margin-bottom: 4px; }
+                                  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 10px; }
+                                  table { border-collapse: collapse; width: 100%; }
+                                  th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+                                  th { background: #f8fafc; }
+                                  .verify { margin-top: 12px; font-size: 22px; font-weight: 700; }
+                                </style>
+                              </head>
+                              <body>
+                                <div class="meta">${structuredDocReport.generatedAt ? new Date(structuredDocReport.generatedAt).toLocaleString('en-EG') : ''}</div>
+                                <div class="meta"><strong>Lab Report - ${structuredDocReport.sampleId || 'N/A'}</strong></div>
+                                <h1>Lab Report</h1>
+                                <div class="grid">
+                                  <div>
+                                    <div class="meta">Patient: ${patient?.name || 'N/A'}</div>
+                                    <div class="meta">Gender: ${patient?.gender || 'N/A'}</div>
+                                    <div class="meta">Order: ${patient?.id || 'N/A'}</div>
+                                    <div class="meta">Specimen: ${structuredDocReport.specimenType || 'N/A'} · ${structuredDocReport.tubeColor || 'N/A'} · ${structuredDocReport.volume || 'N/A'} ml</div>
+                                  </div>
+                                  <div>
+                                    <div class="meta">Age: ${patient?.age ?? 'N/A'}</div>
+                                    <div class="meta">Number: ${patient?.phone || 'N/A'}</div>
+                                    <div class="meta">Sample: ${structuredDocReport.sampleId || 'N/A'}</div>
+                                  </div>
+                                </div>
+                                <h2>${structuredDocReport.testName}</h2>
+                                <table>
+                                  <thead>
+                                    <tr>
+                                      <th>Parameter</th><th>Result</th><th>Unit</th><th>Range</th><th>Flag</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>${rowsHtml}</tbody>
+                                </table>
+                                <div class="verify">Verified By: Lab Technician</div>
+                                <script>
+                                  window.addEventListener('load', function () {
+                                    setTimeout(function(){ window.print(); }, 250);
+                                  });
+                                </script>
+                              </body>
+                            </html>
+                          `;
+                          const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                          const objectUrl = URL.createObjectURL(blob);
+                          const printWindow = window.open(objectUrl, '_blank');
+                          if (!printWindow) {
+                            Alert.alert('Popup Blocked', 'Please allow popups to export PDF.');
+                            return;
+                          }
+                          setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+                        } else if (selectedDoc.url.startsWith('data:')) {
                           if (Platform.OS === 'web') {
                             const link = document.createElement('a');
                             link.href = selectedDoc.url;
@@ -1194,7 +1352,7 @@ export default function DoctorPatientPage() {
                   >
                     <Download size={16} color="#fff" />
                     <Text style={styles.openExternalText}>
-                      {selectedDoc?.url?.startsWith('data:') ? 'Download' : 'Open in Browser'}
+                      {structuredDocReport ? 'Export PDF' : (selectedDoc?.url?.startsWith('data:') ? 'Download' : 'Open in Browser')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1592,6 +1750,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginLeft: 8,
     fontWeight: '500',
+  },
+  structuredWrap: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 18,
+  },
+  structuredTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  structuredTitle: {
+    fontSize: 42,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 8,
+  },
+  structuredMeta: {
+    fontSize: 14,
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  structuredGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 28,
+    marginBottom: 10,
+  },
+  structuredSection: {
+    marginTop: 10,
+    marginBottom: 10,
+    fontSize: 38,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  structuredTable: {
+    borderWidth: 1,
+    borderColor: '#94a3b8',
+    backgroundColor: '#fff',
+  },
+  structuredHeadRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#94a3b8',
+  },
+  structuredRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#cbd5e1',
+  },
+  structuredCell: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    fontSize: 16,
+    color: '#0f172a',
+    borderRightWidth: 1,
+    borderRightColor: '#cbd5e1',
+  },
+  structuredHeadCell: {
+    fontWeight: '700',
+  },
+  structuredVerify: {
+    marginTop: 12,
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   
   // Edit mode styles
