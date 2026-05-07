@@ -1,0 +1,1819 @@
+﻿{
+    "variable":  [
+                     {
+                         "key":  "baseUrl",
+                         "value":  "http://127.0.0.1:8000"
+                     },
+                     {
+                         "key":  "username",
+                         "value":  "dr_salim"
+                     },
+                     {
+                         "key":  "password",
+                         "value":  "ChangeMe123!"
+                     },
+                     {
+                         "key":  "date_from",
+                         "value":  "2026-04-01"
+                     },
+                     {
+                         "key":  "date_to",
+                         "value":  "2026-04-25"
+                     },
+                     {
+                         "key":  "csrfToken",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "sessionId",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "resourceId",
+                         "value":  "1"
+                     }
+                 ],
+    "info":  {
+                 "description":  "Auto-generated collection from backend/core/urls.py and DRF router resources.",
+                 "name":  "Lab System API (Auto)",
+                 "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+                 "_postman_id":  "f1a997cf-8c65-4d76-a53a-4f6d0f4dcd20"
+             },
+    "event":  [
+                  {
+                      "script":  {
+                                     "exec":  [
+                                                  "const writeMethods = [\"POST\",\"PUT\",\"PATCH\",\"DELETE\"];",
+                                                  "if (writeMethods.includes(pm.request.method)) {",
+                                                  "  const csrf = pm.environment.get(\"csrfToken\");",
+                                                  "  if (csrf) {",
+                                                  "    pm.request.headers.upsert({ key: \"X-CSRFToken\", value: csrf });",
+                                                  "  }",
+                                                  "}"
+                                              ],
+                                     "type":  "text/javascript"
+                                 },
+                      "listen":  "prerequest"
+                  },
+                  {
+                      "script":  {
+                                     "exec":  [
+                                                  "const csrf = pm.cookies.get(\"csrftoken\");",
+                                                  "if (csrf) pm.environment.set(\"csrfToken\", csrf);",
+                                                  "const sid = pm.cookies.get(\"sessionid\");",
+                                                  "if (sid) pm.environment.set(\"sessionId\", sid);",
+                                                  "if (pm.response.code \u003e= 200 \u0026\u0026 pm.response.code \u003c 300) {",
+                                                  "  pm.test(\"Status is 2xx\", function () { pm.expect(pm.response.code).to.be.within(200, 299); });",
+                                                  "}",
+                                                  "try {",
+                                                  "  const json = pm.response.json();",
+                                                  "  if (json \u0026\u0026 json.id) pm.environment.set(\"resourceId\", json.id);",
+                                                  "} catch (e) {}"
+                                              ],
+                                     "type":  "text/javascript"
+                                 },
+                      "listen":  "test"
+                  }
+              ],
+    "item":  [
+                 {
+                     "name":  "00 Auth",
+                     "item":  [
+                                  {
+                                      "name":  "GET CSRF",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/auth/csrf",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Login",
+                                      "request":  {
+                                                      "url":  "{{baseUrl}}/api/v1/auth/login",
+                                                      "method":  "POST",
+                                                      "body":  {
+                                                                   "raw":  "{\\n  \"username\": \"{{username}}\",\\n  \"password\": \"{{password}}\"\\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               },
+                                                                   "mode":  "raw"
+                                                               },
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Me",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/auth/me",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Logout",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "url":  "{{baseUrl}}/api/v1/auth/logout",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "01 Reports",
+                     "item":  [
+                                  {
+                                      "name":  "GET Daily Tests",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/reports/daily-tests?date_from={{date_from}}\u0026date_to={{date_to}}",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Weekly Tests",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/reports/weekly-tests?date_from={{date_from}}\u0026date_to={{date_to}}",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Revenue",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/reports/revenue?date_from={{date_from}}\u0026date_to={{date_to}}",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Inventory",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/api/v1/reports/inventory",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "02 Admin",
+                     "item":  [
+                                  {
+                                      "name":  "GET Admin Debug",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "url":  "{{baseUrl}}/admin-debug/",
+                                                      "header":  [
+
+                                                                 ]
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "03 Resources",
+                     "item":  [
+                                  {
+                                      "name":  "users",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list users",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/users/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create users",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/users/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id users",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/users/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace users",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/users/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update users",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/users/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE users",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/users/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "patients",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list patients",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create patients",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id patients",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace patients",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update patients",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE patients",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/patients/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "appointments",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list appointments",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create appointments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id appointments",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace appointments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update appointments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE appointments",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/appointments/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "lab-test-types",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list lab-test-types",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create lab-test-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id lab-test-types",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace lab-test-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update lab-test-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE lab-test-types",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-types/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "lab-test-orders",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list lab-test-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create lab-test-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id lab-test-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace lab-test-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update lab-test-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE lab-test-orders",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-test-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "lab-results",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list lab-results",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create lab-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id lab-results",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace lab-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update lab-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE lab-results",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/lab-results/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "scan-types",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list scan-types",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create scan-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id scan-types",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace scan-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update scan-types",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE scan-types",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-types/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "scan-orders",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list scan-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create scan-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id scan-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace scan-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update scan-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE scan-orders",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "scan-results",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list scan-results",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create scan-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id scan-results",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace scan-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update scan-results",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE scan-results",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/scan-results/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "inventory-items",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list inventory-items",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create inventory-items",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id inventory-items",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace inventory-items",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update inventory-items",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE inventory-items",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-items/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "inventory-transactions",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list inventory-transactions",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create inventory-transactions",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id inventory-transactions",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace inventory-transactions",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update inventory-transactions",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE inventory-transactions",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-transactions/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "inventory-purchase-orders",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE inventory-purchase-orders",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/inventory-purchase-orders/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "invoices",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list invoices",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create invoices",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id invoices",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace invoices",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update invoices",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE invoices",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/invoices/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "payments",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list payments",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create payments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id payments",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace payments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update payments",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE payments",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/payments/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "insurance-providers",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list insurance-providers",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create insurance-providers",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id insurance-providers",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace insurance-providers",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update insurance-providers",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE insurance-providers",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/insurance-providers/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  },
+                                  {
+                                      "name":  "activity-log",
+                                      "item":  [
+                                                   {
+                                                       "name":  "GET list activity-log",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "POST create activity-log",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/",
+                                                                       "method":  "POST",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "GET by id activity-log",
+                                                       "request":  {
+                                                                       "method":  "GET",
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PUT replace activity-log",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/{{resourceId}}/",
+                                                                       "method":  "PUT",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "PATCH update activity-log",
+                                                       "request":  {
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/{{resourceId}}/",
+                                                                       "method":  "PATCH",
+                                                                       "body":  {
+                                                                                    "raw":  "{}",
+                                                                                    "options":  {
+                                                                                                    "raw":  {
+                                                                                                                "language":  "json"
+                                                                                                            }
+                                                                                                },
+                                                                                    "mode":  "raw"
+                                                                                },
+                                                                       "header":  [
+                                                                                      {
+                                                                                          "key":  "Content-Type",
+                                                                                          "value":  "application/json"
+                                                                                      }
+                                                                                  ]
+                                                                   }
+                                                   },
+                                                   {
+                                                       "name":  "DELETE activity-log",
+                                                       "request":  {
+                                                                       "method":  "DELETE",
+                                                                       "url":  "{{baseUrl}}/api/v1/activity-log/{{resourceId}}/",
+                                                                       "header":  [
+
+                                                                                  ]
+                                                                   }
+                                                   }
+                                               ]
+                                  }
+                              ]
+                 }
+             ]
+}
+
