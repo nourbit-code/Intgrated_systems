@@ -1,13 +1,13 @@
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Any, Dict, List
 from uuid import uuid4
 
 
 @dataclass
 class DermatologyClinicSystem:
-    visits: List[Dict[str, object]] = field(default_factory=list)
+    visits: List[Dict[str, Any]] = field(default_factory=list)
 
-    def create_visit(self, patient_id: str, diagnosis: str) -> Dict[str, object]:
+    def create_visit(self, patient_id: str, diagnosis: str) -> Dict[str, Any]:
         visit = {
             "visit_id": str(uuid4()),
             "patient_id": patient_id,
@@ -19,9 +19,9 @@ class DermatologyClinicSystem:
 
 @dataclass
 class LabSystem:
-    orders: List[Dict[str, object]] = field(default_factory=list)
+    orders: List[Dict[str, Any]] = field(default_factory=list)
 
-    def create_orders(self, patient_id: str, tests: List[str]) -> List[Dict[str, object]]:
+    def create_orders(self, patient_id: str, tests: List[str]) -> List[Dict[str, Any]]:
         created = []
         for test_name in tests:
             order = {
@@ -37,9 +37,9 @@ class LabSystem:
 
 @dataclass
 class PharmacySystem:
-    prescriptions: List[Dict[str, object]] = field(default_factory=list)
+    prescriptions: List[Dict[str, Any]] = field(default_factory=list)
 
-    def create_prescription(self, patient_id: str, medications: List[str]) -> Dict[str, object]:
+    def create_prescription(self, patient_id: str, medications: List[str]) -> Dict[str, Any]:
         prescription = {
             "prescription_id": str(uuid4()),
             "patient_id": patient_id,
@@ -62,7 +62,7 @@ class IntegratedCareCoordinator:
         diagnosis: str,
         lab_tests: List[str] | None = None,
         medications: List[str] | None = None,
-    ) -> Dict[str, object]:
+    ) -> Dict[str, Any]:
         visit = self.clinic.create_visit(patient_id=patient_id, diagnosis=diagnosis)
         lab_orders = self.lab.create_orders(patient_id=patient_id, tests=lab_tests or [])
         prescription = None
