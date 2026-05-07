@@ -1,4 +1,4 @@
-# Intgrated_systems
+# Integrated Systems
 
 Minimal integration flow between:
 - Dermatology clinic system
