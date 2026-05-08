@@ -40,6 +40,8 @@ import ReusablePhotoUploader from '../../../components/ReusablePhotoUploader';
 import ServiceTabs from '../../../components/ServiceTabs';
 import PrescriptionTable from "../../../components/PrescriptionTable";
 import medSuggestMap from "../../data/med_suggest_map.json";
+const QRCodeLib = require("qrcode-terminal/vendor/QRCode");
+const QRErrorCorrectLevel = require("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel");
 
 
 // ------------------- 1. DESIGN SYSTEM -------------------
@@ -96,7 +98,7 @@ interface PatientData {
   activeService: string;
 }
 
-// ⭐️ PhotoItem definition from ReusablePhotoUploader (needed for photos state)
+// â­ï¸ PhotoItem definition from ReusablePhotoUploader (needed for photos state)
 interface PhotoItem {
     id: string;
     uri: string;
@@ -115,6 +117,55 @@ const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
     {action && action}
   </View>
 );
+
+const QRCodeMatrix = ({ value, size = 210 }: { value: string; size?: number }) => {
+  const matrix = useMemo(() => {
+    try {
+      const qr = new QRCodeLib(0, QRErrorCorrectLevel.M);
+      qr.addData(value);
+      qr.make();
+      const count = qr.getModuleCount();
+      const rows: boolean[][] = [];
+      for (let r = 0; r < count; r++) {
+        const cols: boolean[] = [];
+        for (let c = 0; c < count; c++) {
+          cols.push(Boolean(qr.isDark(r, c)));
+        }
+        rows.push(cols);
+      }
+      return rows;
+    } catch {
+      return [];
+    }
+  }, [value]);
+
+  if (!matrix.length) {
+    return <Text style={styles.searchErrorText}>Could not generate QR for this prescription.</Text>;
+  }
+
+  const moduleCount = matrix.length;
+  const moduleSize = Math.max(2, Math.floor(size / moduleCount));
+  const renderedSize = moduleSize * moduleCount;
+
+  return (
+    <View style={[styles.qrFrame, { width: renderedSize + 16, height: renderedSize + 16 }]}>
+      {matrix.map((row, rowIndex) => (
+        <View key={`qr-row-${rowIndex}`} style={{ flexDirection: "row", height: moduleSize }}>
+          {row.map((dark, colIndex) => (
+            <View
+              key={`qr-cell-${rowIndex}-${colIndex}`}
+              style={{
+                width: moduleSize,
+                height: moduleSize,
+                backgroundColor: dark ? "#111827" : "#ffffff",
+              }}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+};
 
 // ------------------- 3. CORE COMPONENTS (Defined before use) -------------------
 
@@ -234,7 +285,7 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds, search
             >
               <View>
                   <Text style={[styles.medName, isSelected && styles.medNameSelected]}>{med.name}</Text>
-                  <Text style={[styles.medDose, isSelected && styles.medDoseSelected]}>{med.dose} • {med.duration}</Text>
+                  <Text style={[styles.medDose, isSelected && styles.medDoseSelected]}>{med.dose || "N/A"} • EGP {Number(med.price ?? 0).toFixed(2)} • Stock {Number(med.stock ?? 0)}</Text>
               </View>
               <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={22} color={isSelected ? THEME.primary : THEME.textLight} />
             </TouchableOpacity>
@@ -427,7 +478,7 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, doc
             <TouchableOpacity onPress={() => toggleExpand(med.id)} style={styles.rowMain}>
               <View>
                 <Text style={styles.rowName}>{med.name}</Text>
-                <Text style={styles.rowDetail}>{med.dose || 'N/A'} • {med.duration || 'N/A'}</Text>
+                <Text style={styles.rowDetail}>{med.dose || 'N/A'} â€¢ {med.duration || 'N/A'}</Text>
               </View>
               <Ionicons name={expandedMap[med.id] ? "chevron-up" : "chevron-down"} size={16} color={THEME.textLight} />
             </TouchableOpacity>
@@ -585,7 +636,7 @@ const DiagnosisPage = () => {
   const [medResults, setMedResults] = useState<any[]>([]);
   const [medLoading, setMedLoading] = useState(false);
   const [medError, setMedError] = useState<string | null>(null);
-  // ⭐️ UPDATED: Retaining the PhotoItem type for photos state
+  // â­ï¸ UPDATED: Retaining the PhotoItem type for photos state
   const [photos, setPhotos] = useState<PhotoItem[]>([]); 
   const [labs, setLabs] = useState<any[]>([]); 
   const [remoteLabs, setRemoteLabs] = useState<any[]>([]);
@@ -600,6 +651,7 @@ const DiagnosisPage = () => {
   const [pharmacyDispatch, setPharmacyDispatch] = useState<any | null>(null);
   const prescriptionLocked = pharmacyDispatch?.status === "sent" || pharmacyDispatch?.status === "acknowledged";
   const [sendingToPharmacy, setSendingToPharmacy] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Patient data from API
@@ -863,10 +915,10 @@ const DiagnosisPage = () => {
       const raw = await AsyncStorage.getItem(storageKeyForPatient(patientId));
       if (raw) {
         const data = JSON.parse(raw);
-        // Don't overwrite diagnosis if we already have fresh data
-        if(data.diagnosis && !diagnosis) setDiagnosis(data.diagnosis);
-        if(data.rxNotes && !rxNotes) setRxNotes(data.rxNotes);
-        if(data.selectedMeds && selectedMeds.length === 0) setSelectedMeds(data.selectedMeds);
+        // Load this patient's own draft deterministically.
+        setDiagnosis(data?.diagnosis || "");
+        setRxNotes(data?.rxNotes || "");
+        setSelectedMeds(Array.isArray(data?.selectedMeds) ? data.selectedMeds : []);
       }
       
       // Load diagnosis templates
@@ -952,6 +1004,8 @@ const DiagnosisPage = () => {
             dose: m.strength || "",
             duration: "",
             notes: "",
+            price: Number(m.price ?? 0),
+            stock: Number(m.stock ?? m.pharmacy_quantity ?? 0),
           }))
         );
       } else {
@@ -1019,17 +1073,27 @@ const DiagnosisPage = () => {
     setPharmacyDispatch(null);
   };
 
+  // Route changes reuse this screen component; reset per-patient state to avoid
+  // stale prescription ids and "already saved" flags crossing patients.
+  useEffect(() => {
+    if (!patientId) return;
+    clearFormFields();
+    setMedSearchQuery("");
+    setMedResults([]);
+    setMedError(null);
+  }, [patientId]);
+
   // --- Save Data to Backend ---
-  const saveData = async (startNew: boolean = false) => {
+  const saveData = async (startNew: boolean = false, silent: boolean = false): Promise<number | null> => {
     if (!patientId || !user?.id) {
-      Alert.alert("Error", "Missing patient or doctor information");
-      return;
+      if (!silent) Alert.alert("Error", "Missing patient or doctor information");
+      return null;
     }
     
     // Validate required fields
     if (!diagnosis.trim()) {
-      Alert.alert("Missing Information", "Please enter a diagnosis before saving.");
-      return;
+      if (!silent) Alert.alert("Missing Information", "Please enter a diagnosis before saving.");
+      return null;
     }
     
     const medsToSave = selectedMeds.filter((m) => (m.name || "").trim());
@@ -1042,18 +1106,8 @@ const DiagnosisPage = () => {
       }));
 
     if (medsToSave.length === 0 && testsToSave.length === 0) {
-      Alert.alert("Missing Information", "Please add at least one medication or one requested test/scan before saving.");
-      return;
-    }
-    
-    // Prevent duplicate saves (unless starting new)
-    if (isSaved && !startNew) {
-      Alert.alert(
-        "Already Saved",
-        "This diagnosis has already been saved. Use 'Save & New' to create a new diagnosis.",
-        [{ text: "OK" }]
-      );
-      return;
+      if (!silent) Alert.alert("Missing Information", "Please add at least one medication or one requested test/scan before saving.");
+      return null;
     }
     
     setSaving(true);
@@ -1129,16 +1183,21 @@ const DiagnosisPage = () => {
         if (startNew) {
           clearFormFields();
           await AsyncStorage.removeItem(storageKeyForPatient(patientId));
-          Alert.alert("Success", "Diagnosis saved. New session started.");
+          if (!silent) Alert.alert("Success", "Diagnosis saved. New session started.");
         } else {
-          Alert.alert("Saved", "Diagnosis saved. You can now send the prescription to pharmacy.");
+          if (!silent) {
+            Alert.alert("Saved", "Diagnosis saved to patient page.");
+          }
         }
+        return prescriptionId;
       } else {
-        Alert.alert("Error", result.error || "Failed to save diagnosis");
+        if (!silent) Alert.alert("Error", result.error || "Failed to save diagnosis");
+        return null;
       }
     } catch (e) {
       console.error("Error saving data:", e);
-      Alert.alert("Error", "Failed to save diagnosis. Please try again.");
+      if (!silent) Alert.alert("Error", "Failed to save diagnosis. Please try again.");
+      return null;
     } finally {
       setSaving(false);
     }
@@ -1239,14 +1298,14 @@ const DiagnosisPage = () => {
       // Format post-care instructions
       const selectedPostCare = postCareInstructions.filter(i => i.checked).map(i => i.text);
       const postCareText = selectedPostCare.length > 0 
-        ? selectedPostCare.join('\n• ') 
+        ? selectedPostCare.join('\nâ€¢ ') 
         : 'No specific instructions';
       
       // Save laser session as a medical record with type "Laser"
       const laserData = {
         doctor_id: user.id,
         diagnosis: `Laser Treatment - ${treatmentArea}`,
-        notes: `Skin Type: ${skinType}\nIntensity: ${intensity}\nPasses: ${passes}\nConsumables: ${consumablesText}\n\nSession Notes:\n${laserNotes}\n\nPost-Treatment Care:\n• ${postCareText}`,
+        notes: `Skin Type: ${skinType}\nIntensity: ${intensity}\nPasses: ${passes}\nConsumables: ${consumablesText}\n\nSession Notes:\n${laserNotes}\n\nPost-Treatment Care:\nâ€¢ ${postCareText}`,
         medications: [], // Laser sessions typically don't have medications
         photos: photosForBackend,
         labs: [],
@@ -1510,12 +1569,32 @@ const DiagnosisPage = () => {
   };
 
   const handleSendToPharmacy = async () => {
-    if (!latestPrescriptionId) {
-      Alert.alert("Save First", "Please save diagnosis first to generate a prescription.");
+    let prescriptionId = latestPrescriptionId;
+    if (!prescriptionId) {
+      Alert.alert("Save First", "Please press Save first, then Send To Pharmacy.");
       return;
     }
     if (prescriptionLocked) {
       Alert.alert("Already Sent", `Prescription already ${pharmacyDispatch?.status}.`);
+      return;
+    }
+
+    const doDispatch = async () => {
+      setSendingToPharmacy(true);
+      const result = await dispatchPrescriptionToPharmacy(prescriptionId as number, `rx-${prescriptionId}`);
+      setSendingToPharmacy(false);
+      if (!result.success) {
+        Alert.alert("Dispatch Failed", result.error || "Could not send prescription");
+        return;
+      }
+      setPharmacyDispatch(result.data?.dispatch || null);
+      Alert.alert("Sent", "Prescription dispatched to pharmacy.");
+    };
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      const confirmed = window.confirm(`Send ${selectedMeds.length} medication(s) to pharmacy now?`);
+      if (!confirmed) return;
+      await doDispatch();
       return;
     }
 
@@ -1524,24 +1603,49 @@ const DiagnosisPage = () => {
       `Send ${selectedMeds.length} medication(s) to pharmacy now?`,
       [
         { text: "Cancel", style: "cancel" },
-        {
-          text: "Send",
-          onPress: async () => {
-            setSendingToPharmacy(true);
-            const result = await dispatchPrescriptionToPharmacy(latestPrescriptionId, `rx-${latestPrescriptionId}`);
-            setSendingToPharmacy(false);
-            if (!result.success) {
-              Alert.alert("Dispatch Failed", result.error || "Could not send prescription");
-              return;
-            }
-            setPharmacyDispatch(result.data?.dispatch || null);
-            Alert.alert("Sent", "Prescription dispatched to pharmacy.");
-          }
-        }
+        { text: "Send", onPress: () => { void doDispatch(); } }
       ]
     );
   };
 
+
+  const qrPayload = useMemo(() => {
+    const medications = (selectedMeds || []).slice(0, 8).map((med: any) => ({
+      n: String(med?.name || "").slice(0, 42),
+      d: String(med?.dose || "").slice(0, 16),
+      du: String(med?.duration || "").slice(0, 16),
+      no: String(med?.notes || "").slice(0, 24),
+    }));
+    return JSON.stringify({
+      t: "DERMA_RX",
+      v: 1,
+      ts: new Date().toISOString(),
+      rx: latestPrescriptionId ? `RX-${latestPrescriptionId}` : "RX-N/A",
+      c: String(clinicDisplayName || "Derma Clinic").slice(0, 40),
+      dr: String(doctorDisplayName || "").slice(0, 32),
+      patient: {
+        n: String(patient?.name || "").slice(0, 36),
+        id: String(patient?.id || patientId || "").slice(0, 20),
+        a: Number(patient?.age ?? 0),
+        g: String(patient?.gender || "").slice(0, 10),
+      },
+      diag: String(diagnosis || "").slice(0, 80),
+      notes: String(rxNotes || "").slice(0, 100),
+      meds: medications,
+    });
+  }, [clinicDisplayName, diagnosis, doctorDisplayName, latestPrescriptionId, patient?.age, patient?.gender, patient?.id, patient?.name, patientId, rxNotes, selectedMeds]);
+
+  const handleOpenPrescriptionQR = async () => {
+    if (!selectedMeds.length) {
+      Alert.alert("No Prescription", "Please add at least one medication first.");
+      return;
+    }
+    if (!latestPrescriptionId) {
+      Alert.alert("Save First", "Please press Save first, then open the QR prescription.");
+      return;
+    }
+    setShowQrModal(true);
+  };
   const handleRetryDispatch = async () => {
     if (!latestPrescriptionId) return;
     setSendingToPharmacy(true);
@@ -1703,7 +1807,7 @@ const DiagnosisPage = () => {
                     >
                       <Text style={styles.dropdownTitle}>{d.label}</Text>
                       <Text style={styles.dropdownSub}>
-                        {d.ontology ? `${d.ontology} • ` : ""}{d.code || d.id}
+                        {d.ontology ? `${d.ontology} â€¢ ` : ""}{d.code || d.id}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -1714,10 +1818,10 @@ const DiagnosisPage = () => {
             {selectedDisease && (
               <View style={styles.selectedDiseaseCard}>
                 <Text style={{ fontWeight: "700", color: THEME.secondary }}>
-                  🧬 {selectedDisease.label}
+                  ðŸ§¬ {selectedDisease.label}
                 </Text>
                 <Text style={{ fontSize: 12, color: THEME.textLight }}>
-                  {selectedDisease.ontology ? `${selectedDisease.ontology} • ` : ""}{selectedDisease.code || selectedDisease.id}
+                  {selectedDisease.ontology ? `${selectedDisease.ontology} â€¢ ` : ""}{selectedDisease.code || selectedDisease.id}
                 </Text>
               </View>
             )}
@@ -1986,7 +2090,7 @@ const DiagnosisPage = () => {
           {pharmacyDispatch ? (
             <Text style={[styles.timestampText, { marginTop: 6, textAlign: "center", color: pharmacyStatusMeta.text, fontWeight: "700" }]}>
               Pharmacy Status: {pharmacyStatusMeta.label}
-              {pharmacyDispatch?.retry_count ? ` • Retries: ${pharmacyDispatch.retry_count}` : ""}
+              {pharmacyDispatch?.retry_count ? ` â€¢ Retries: ${pharmacyDispatch.retry_count}` : ""}
             </Text>
           ) : null}
           {pharmacyDispatch?.status === "failed" ? (
@@ -1998,6 +2102,12 @@ const DiagnosisPage = () => {
               <Text style={styles.saveBtnText}>Retry Send</Text>
             </TouchableOpacity>
           ) : null}
+          <TouchableOpacity
+            style={[styles.saveBtn, { marginTop: 8, backgroundColor: "#0f766e" }]}
+            onPress={handleOpenPrescriptionQR}
+          >
+            <Text style={styles.saveBtnText}>Show Patient QR Prescription</Text>
+          </TouchableOpacity>
           
           {/* Save Button */}
           <TouchableOpacity 
@@ -2284,7 +2394,7 @@ const DiagnosisPage = () => {
           showsVerticalScrollIndicator={false}
         >
           
-          {/* ⭐️ REPLACED PHOTO SECTION WITH REUSABLE COMPONENT */}
+          {/* â­ï¸ REPLACED PHOTO SECTION WITH REUSABLE COMPONENT */}
           <ReusablePhotoUploader
               photos={photos}
               setPhotos={setPhotos}
@@ -2372,7 +2482,7 @@ const DiagnosisPage = () => {
                                 ) : null}
                                 <View style={styles.photoFooter}>
                                     <Text style={styles.timestampText}>
-                                      {isRemote ? `FHIR DiagnosticReport • ${l.timestamp}` : l.timestamp}
+                                      {isRemote ? `FHIR DiagnosticReport â€¢ ${l.timestamp}` : l.timestamp}
                                     </Text>
                                     {isRemote ? (
                                       <Text style={[styles.timestampText, { marginTop: 2 }]}>
@@ -2414,6 +2524,31 @@ const DiagnosisPage = () => {
             customTemplates={customDiagnosisTemplates}
             setCustomTemplates={setCustomDiagnosisTemplates}
         />
+        <Modal
+          visible={showQrModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowQrModal(false)}
+        >
+          <View style={styles.previewOverlay}>
+            <View style={styles.previewContent}>
+              <View style={styles.previewHeader}>
+                <Text style={styles.previewTitle}>Patient QR Prescription</Text>
+                <TouchableOpacity onPress={() => setShowQrModal(false)}>
+                  <Ionicons name="close" size={24} color={THEME.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView contentContainerStyle={{ alignItems: "center", paddingBottom: 20 }}>
+                <Text style={styles.noteMeta}>
+                  Pharmacy can scan this QR when integration sync is down, or patient can use any external pharmacy.
+                </Text>
+                <QRCodeMatrix value={qrPayload} />
+                <Text style={[styles.timestampText, { marginTop: 10, textAlign: "center" }]}>QR Type: DERMA_RX v1</Text>
+                <Text selectable style={styles.qrPayloadText}>{qrPayload}</Text>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
 
         <Modal
           visible={reportPreviewVisible}
@@ -2450,7 +2585,7 @@ const DiagnosisPage = () => {
                         <Text style={styles.previewReportMetaLine}>Gender: {patient?.gender || "N/A"}</Text>
                         <Text style={styles.previewReportMetaLine}>Order: {patientId || "N/A"}</Text>
                         <Text style={styles.previewReportMetaLine}>
-                          Specimen: {parsedStructuredReport.specimenType || "N/A"} · {parsedStructuredReport.tubeColor || "N/A"} · {parsedStructuredReport.volume || "N/A"} ml
+                          Specimen: {parsedStructuredReport.specimenType || "N/A"} Â· {parsedStructuredReport.tubeColor || "N/A"} Â· {parsedStructuredReport.volume || "N/A"} ml
                         </Text>
                       </View>
                       <View style={styles.previewPatientCol}>
@@ -4067,6 +4202,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: THEME.white,
+  },
+  qrFrame: {
+    marginTop: 12,
+    marginBottom: 6,
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+  },
+  qrPayloadText: {
+    marginTop: 10,
+    fontSize: 11,
+    lineHeight: 16,
+    color: THEME.textLight,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 8,
+    padding: 10,
+    width: "100%",
   },
 });
 

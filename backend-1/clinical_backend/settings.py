@@ -196,3 +196,14 @@ LAB_CATALOG_ENDPOINT = os.getenv(
     "http://127.0.0.1:8001/api/v1/integration/catalog"
 ).strip()
 LAB_CATALOG_TOKEN = os.getenv("LAB_CATALOG_TOKEN", "").strip()
+
+# Clinic -> Pharmacy prescription dispatch (FHIR MedicationRequest import)
+PHARMACY_FHIR_ENDPOINT = os.getenv(
+    "PHARMACY_FHIR_ENDPOINT",
+    "http://127.0.0.1:8001/fhir/MedicationRequest/$import/"
+).strip()
+PHARMACY_FHIR_TOKEN = os.getenv("PHARMACY_FHIR_TOKEN", "").strip()
+PHARMACY_CATALOG_ENDPOINT = os.getenv(
+    "PHARMACY_CATALOG_ENDPOINT",
+    "http://127.0.0.1:8001/api/v1/integration/pharmacy-medications"
+).strip()

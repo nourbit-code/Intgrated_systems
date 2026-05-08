@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import PrescriptionTable from "@/components/PrescriptionTable";
-import { ChevronDown, ChevronUp, Plus, Eye, AlertCircle, RefreshCw, FileText, Download, X, Edit3, Save, PlusCircle, ArrowLeft } from "lucide-react-native";
+import { ChevronDown, ChevronUp, Plus, Eye, AlertCircle, RefreshCw, FileText, Download, X, Edit3, Save, PlusCircle, ArrowLeft, QrCode } from "lucide-react-native";
 import { 
   getPatientProfile, 
   updatePatientInfo, 
@@ -28,6 +28,8 @@ import {
 } from "../../../src/api/doctorApi";
 import { useAuth } from "../../context/AuthContext";
 import { useAutoRefresh } from "@/src/hooks/useAutoRefresh";
+const QRCodeLib = require("qrcode-terminal/vendor/QRCode");
+const QRErrorCorrectLevel = require("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel");
 
 // Conditionally import WebView only for native platforms
 let WebView: any = null;
@@ -103,6 +105,55 @@ type PatientFileData = {
   visit_id?: number;
 };
 
+const QRCodeMatrix = ({ value, size = 210 }: { value: string; size?: number }) => {
+  const matrix = useMemo(() => {
+    try {
+      const qr = new QRCodeLib(0, QRErrorCorrectLevel.M);
+      qr.addData(value);
+      qr.make();
+      const count = qr.getModuleCount();
+      const rows: boolean[][] = [];
+      for (let r = 0; r < count; r++) {
+        const cols: boolean[] = [];
+        for (let c = 0; c < count; c++) {
+          cols.push(Boolean(qr.isDark(r, c)));
+        }
+        rows.push(cols);
+      }
+      return rows;
+    } catch {
+      return [];
+    }
+  }, [value]);
+
+  if (!matrix.length) {
+    return <Text style={styles.qrHint}>Could not generate QR for this prescription.</Text>;
+  }
+
+  const moduleCount = matrix.length;
+  const moduleSize = Math.max(2, Math.floor(size / moduleCount));
+  const renderedSize = moduleSize * moduleCount;
+
+  return (
+    <View style={[styles.qrFrame, { width: renderedSize + 16, height: renderedSize + 16 }]}>
+      {matrix.map((row, rowIndex) => (
+        <View key={`qr-row-${rowIndex}`} style={{ flexDirection: "row", height: moduleSize }}>
+          {row.map((dark, colIndex) => (
+            <View
+              key={`qr-cell-${rowIndex}-${colIndex}`}
+              style={{
+                width: moduleSize,
+                height: moduleSize,
+                backgroundColor: dark ? "#111827" : "#ffffff",
+              }}
+            />
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+};
+
 // ---------------------
 // Main Component
 // ---------------------
@@ -119,6 +170,8 @@ export default function DoctorPatientPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [selectedVisitForQr, setSelectedVisitForQr] = useState<Visit | null>(null);
   
   // Document viewer state
   const [docModalVisible, setDocModalVisible] = useState(false);
@@ -162,6 +215,33 @@ export default function DoctorPatientPage() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [photoSortOrder, setPhotoSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [labSortOrder, setLabSortOrder] = useState<'newest' | 'oldest'>('newest');
+
+  const buildVisitQrPayload = useCallback((visit: Visit) => {
+    const doctorNameFromTitle = String(visit?.title || '').replace(/^Visit\s+with\s+/i, '').trim() || doctorDisplayName;
+    const medications = (visit?.prescriptions || []).slice(0, 12).map((med: any) => ({
+      n: String(med?.medication || '').slice(0, 42),
+      d: String(med?.dose || '').slice(0, 16),
+      du: String(med?.duration || '').slice(0, 16),
+      no: String(med?.notes || '').slice(0, 24),
+    }));
+    return JSON.stringify({
+      t: "DERMA_RX",
+      v: 1,
+      ts: new Date().toISOString(),
+      rx: `RX-${visit?.id || "N/A"}`,
+      c: "Derma Clinic",
+      dr: doctorNameFromTitle,
+      patient: {
+        n: String(patient?.name || "").slice(0, 36),
+        id: String(patient?.id || "").slice(0, 20),
+        a: Number(patient?.age ?? 0),
+        g: String(patient?.gender || "").slice(0, 10),
+      },
+      diag: String(visit?.diagnosis?.finalDiagnosis || "").slice(0, 80),
+      notes: String(visit?.treatment || "").slice(0, 100),
+      meds: medications,
+    });
+  }, [doctorDisplayName, patient?.age, patient?.gender, patient?.id, patient?.name]);
 
   const structuredDocReport = useMemo(() => {
     const raw = selectedDoc?.url || '';
@@ -904,7 +984,22 @@ export default function DoctorPatientPage() {
                   <Text style={styles.cardDate}>{v.date} • {v.service}</Text>
                 </View>
 
-                {expanded === v.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                <View style={styles.cardHeaderActions}>
+                  {v.prescriptions?.length ? (
+                    <TouchableOpacity
+                      style={styles.visitQrBtn}
+                      onPress={(e: any) => {
+                        e?.stopPropagation?.();
+                        setSelectedVisitForQr(v);
+                        setQrModalVisible(true);
+                      }}
+                    >
+                      <QrCode size={16} color="#9B084D" />
+                      <Text style={styles.visitQrBtnText}>QR</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {expanded === v.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                </View>
               </TouchableOpacity>
 
               {expanded === v.id && (
@@ -1102,6 +1197,24 @@ export default function DoctorPatientPage() {
                   <Text>Close</Text>
                 </Pressable>
               </View>
+            </Modal>
+
+            <Modal visible={qrModalVisible} transparent animationType="fade" onRequestClose={() => setQrModalVisible(false)}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setQrModalVisible(false)}>
+                <View style={styles.qrModalCard}>
+                  <Text style={styles.sectionTitle}>Prescription QR</Text>
+                  <Text style={styles.qrHint}>
+                    {selectedVisitForQr ? `Visit #${selectedVisitForQr.id} • ${selectedVisitForQr.date}` : ""}
+                  </Text>
+                  {selectedVisitForQr ? (
+                    <QRCodeMatrix value={buildVisitQrPayload(selectedVisitForQr)} />
+                  ) : null}
+                  <Text style={styles.qrHint}>Pharmacy can scan this QR for this saved prescription.</Text>
+                  <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setQrModalVisible(false)}>
+                    <Text>Close</Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
             </Modal>
             
             {/* Document Viewer Modal */}
@@ -1512,6 +1625,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#EEE",
   },
+  cardHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  visitQrBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d8b4d0",
+    backgroundColor: "#fff",
+  },
+  visitQrBtnText: {
+    color: "#9B084D",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   cardTitle: { fontWeight: "700", fontSize: 16 },
   cardDate: { color: "#777", fontSize: 13 },
   cardBody: { padding: 14, backgroundColor: "#fff" },
@@ -1663,8 +1797,33 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 12,
     backgroundColor: "#fff",
-    borderRadius: 8,
-  },  
+    borderRadius: 8,
+  },
+  qrModalCard: {
+    width: "92%",
+    maxWidth: 420,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    gap: 10,
+  },
+  qrFrame: {
+    marginTop: 8,
+    marginBottom: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 10,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrHint: {
+    color: "#64748b",
+    fontSize: 12,
+    textAlign: "center",
+  },
   // Lab item action button
   labAction: {
     padding: 8,
@@ -1966,3 +2125,5 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+
+

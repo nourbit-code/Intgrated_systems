@@ -1,0 +1,340 @@
+﻿{
+    "info":  {
+                 "name":  "Pharmacy Management API",
+                 "_postman_id":  "b2f9f8ea-6a0b-4f60-9d31-1f6d18df8d9a",
+                 "description":  "Collection for testing pharmacy backend auth, patients, inventory, invoices, and reminders flow.",
+                 "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+             },
+    "item":  [
+                 {
+                     "name":  "Auth - Login",
+                     "request":  {
+                                     "method":  "POST",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Content-Type",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "body":  {
+                                                  "mode":  "raw",
+                                                  "raw":  "{\n  \"username\": \"admin\",\n  \"password\": \"Admin123!\"\n}"
+                                              },
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/login/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "login",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Login status is 200\u0027, function () {",
+                                                                   "  pm.response.to.have.status(200);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.expect(json.token, \u0027token missing in response\u0027).to.be.a(\u0027string\u0027).and.not.empty;",
+                                                                   "pm.environment.set(\u0027token\u0027, json.token);"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Patients - List",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/patients/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "patients",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Patients list status is 200\u0027, function () {",
+                                                                   "  pm.response.to.have.status(200);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Patients list is an array\u0027, function () {",
+                                                                   "  pm.expect(json).to.be.an(\u0027array\u0027);",
+                                                                   "});",
+                                                                   "if (json.length \u003e 0 \u0026\u0026 json[0].id) { pm.environment.set(\u0027patient_id\u0027, json[0].id); }"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Patients - Create",
+                     "request":  {
+                                     "method":  "POST",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    },
+                                                    {
+                                                        "key":  "Content-Type",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "body":  {
+                                                  "mode":  "raw",
+                                                  "raw":  "{\n  \"full_name\": \"Postman Test Patient\",\n  \"phone\": \"01012345678\"\n}"
+                                              },
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/patients/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "patients",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Patient created\u0027, function () {",
+                                                                   "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Created patient has id\u0027, function () {",
+                                                                   "  pm.expect(json.id, \u0027id missing\u0027).to.exist;",
+                                                                   "});",
+                                                                   "pm.test(\u0027Created patient has name\u0027, function () {",
+                                                                   "  pm.expect((json.full_name || json.name || \u0027\u0027).length, \u0027name missing\u0027).to.be.greaterThan(0);",
+                                                                   "});",
+                                                                   "if (json.id) pm.environment.set(\u0027patient_id\u0027, json.id);"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Inventory - List",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/inventory/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "inventory",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Inventory list status is 200\u0027, function () {",
+                                                                   "  pm.response.to.have.status(200);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Inventory list is an array\u0027, function () {",
+                                                                   "  pm.expect(json).to.be.an(\u0027array\u0027);",
+                                                                   "});"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Invoices - List",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/invoices/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "invoices",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Invoices list status is 200\u0027, function () {",
+                                                                   "  pm.response.to.have.status(200);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Invoices list is an array\u0027, function () {",
+                                                                   "  pm.expect(json).to.be.an(\u0027array\u0027);",
+                                                                   "});",
+                                                                   "const targetInvoiceId = String(pm.environment.get(\u0027invoice_id\u0027) || \u0027\u0027);",
+                                                                   "if (targetInvoiceId) {",
+                                                                   "  const matched = json.find(x =\u003e String(x.id) === targetInvoiceId);",
+                                                                   "  pm.test(\u0027Created invoice appears in list\u0027, function () {",
+                                                                   "    pm.expect(matched, \u0027invoice_id not found in list\u0027).to.exist;",
+                                                                   "  });",
+                                                                   "}"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Invoices - Create",
+                     "request":  {
+                                     "method":  "POST",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    },
+                                                    {
+                                                        "key":  "Content-Type",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "body":  {
+                                                  "mode":  "raw",
+                                                  "raw":  "{\n  \"patient\": {{patient_id}},\n  \"amount\": \"150.00\",\n  \"status\": \"Pending\"\n}"
+                                              },
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/invoices/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "invoices",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Invoice created\u0027, function () {",
+                                                                   "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Created invoice has id\u0027, function () {",
+                                                                   "  pm.expect(json.id, \u0027id missing\u0027).to.exist;",
+                                                                   "});",
+                                                                   "pm.test(\u0027Created invoice amount is positive\u0027, function () {",
+                                                                   "  pm.expect(Number(json.amount || 0)).to.be.above(0);",
+                                                                   "});",
+                                                                   "pm.test(\u0027Created invoice has expected status\u0027, function () {",
+                                                                   "  pm.expect(String(json.status || \u0027\u0027).toLowerCase()).to.be.oneOf([\u0027pending\u0027, \u0027paid\u0027]);",
+                                                                   "});",
+                                                                   "if (json.id) pm.environment.set(\u0027invoice_id\u0027, json.id);"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 },
+                 {
+                     "name":  "Invoices - Refund",
+                     "request":  {
+                                     "method":  "PATCH",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Authorization",
+                                                        "value":  "Token {{token}}"
+                                                    },
+                                                    {
+                                                        "key":  "Content-Type",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "body":  {
+                                                  "mode":  "raw",
+                                                  "raw":  "{\n  \"status\": \"Refunded\"\n}"
+                                              },
+                                     "url":  {
+                                                 "raw":  "{{base_url}}/invoices/{{invoice_id}}/",
+                                                 "host":  [
+                                                              "{{base_url}}"
+                                                          ],
+                                                 "path":  [
+                                                              "invoices",
+                                                              "{{invoice_id}}",
+                                                              ""
+                                                          ]
+                                             }
+                                 },
+                     "event":  [
+                                   {
+                                       "listen":  "test",
+                                       "script":  {
+                                                      "type":  "text/javascript",
+                                                      "exec":  [
+                                                                   "pm.test(\u0027Invoice refund status is 200\u0027, function () {",
+                                                                   "  pm.response.to.have.status(200);",
+                                                                   "});",
+                                                                   "const json = pm.response.json();",
+                                                                   "pm.test(\u0027Invoice status is Refunded\u0027, function () {",
+                                                                   "  pm.expect(String(json.status || \u0027\u0027), \u0027status mismatch\u0027).to.eql(\u0027Refunded\u0027);",
+                                                                   "});",
+                                                                   "const invoiceId = String(pm.environment.get(\u0027invoice_id\u0027) || \u0027\u0027);",
+                                                                   "pm.test(\u0027Refunded invoice id matches environment invoice_id\u0027, function () {",
+                                                                   "  if (invoiceId) { pm.expect(String(json.id || \u0027\u0027)).to.eql(invoiceId); }",
+                                                                   "});"
+                                                               ]
+                                                  }
+                                   }
+                               ]
+                 }
+             ],
+    "variable":  [
+                     {
+                         "key":  "base_url",
+                         "value":  "http://127.0.0.1:8000"
+                     }
+                 ]
+}

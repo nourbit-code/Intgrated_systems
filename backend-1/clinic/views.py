@@ -218,6 +218,10 @@ def _dispatch_prescription_to_pharmacy(prescription, idempotency_key=None):
     idempotency_key = idempotency_key or f"rx-{prescription.prescription_id}"
     existing = PharmacyDispatch.objects.filter(idempotency_key=idempotency_key).first()
     if existing:
+        # If there is a previous failed attempt under the same idempotency key,
+        # retry it immediately so "Send to Pharmacy" remains reliable.
+        if existing.status == 'failed':
+            existing = _attempt_dispatch(existing)
         return existing, True
 
     payload = _build_fhir_medication_request_bundle(prescription)
@@ -1080,14 +1084,21 @@ class PatientViewSet(viewsets.ModelViewSet):
             for med_data in medications_data:
                 # Check if medication exists, or create a simple one
                 med_name = med_data.get('name', 'Unknown')
-                medication, _ = Medication.objects.get_or_create(
-                    name=med_name,
-                    defaults={
-                        'generic_name': med_name,
-                        'strength': med_data.get('dose', ''),
-                        'form': 'tablet'
-                    }
+                medication = (
+                    Medication.objects.filter(name__iexact=med_name)
+                    .order_by('med_id')
+                    .first()
                 )
+                if medication is None:
+                    medication = Medication.objects.create(
+                        name=med_name,
+                        generic_name=med_name,
+                        strength=med_data.get('dose', ''),
+                        form='tablet',
+                    )
+                elif not medication.strength and med_data.get('dose'):
+                    medication.strength = med_data.get('dose', '')
+                    medication.save(update_fields=['strength'])
                 
                 # Create prescription medication link
                 PrescriptionMedication.objects.create(
@@ -1098,6 +1109,20 @@ class PatientViewSet(viewsets.ModelViewSet):
                     notes=med_data.get('notes', '')
                 )
         
+        pharmacy_dispatch_data = None
+        pharmacy_dispatch_error = ""
+        dispatch_to_pharmacy = bool(request.data.get('dispatch_to_pharmacy', False))
+        if dispatch_to_pharmacy and prescription and medications_data:
+            # Dispatch only when explicitly requested by caller.
+            try:
+                dispatch, _ = _dispatch_prescription_to_pharmacy(
+                    prescription,
+                    idempotency_key=f"rx-{prescription.prescription_id}",
+                )
+                pharmacy_dispatch_data = PharmacyDispatchSerializer(dispatch).data
+            except Exception as exc:
+                pharmacy_dispatch_error = str(exc)
+
         # Save photos
         for photo in photos_data:
             PatientFile.objects.create(
@@ -1150,6 +1175,8 @@ class PatientViewSet(viewsets.ModelViewSet):
             'success': True,
             'record_id': medical_record.record_id,
             'prescription_id': prescription.prescription_id if prescription else None,
+            'pharmacy_dispatch': pharmacy_dispatch_data,
+            'pharmacy_dispatch_error': pharmacy_dispatch_error,
             'laser_session_id': laser_session.session_id if laser_session else None,
             'files_saved': len(photos_data) + len(labs_data),
             'message': 'Diagnosis saved successfully'
@@ -1966,6 +1993,64 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
 class MedicationViewSet(viewsets.ModelViewSet):
     queryset = Medication.objects.all()
     serializer_class = MedicationSerializer
+
+    def _fallback_price_for_name(self, name, med_id=""):
+        seed = f"{name}|{med_id}"
+        total = sum(ord(ch) for ch in seed)
+        # Deterministic testing price band in EGP: 18.00 -> 147.50
+        return round(18.0 + ((total % 104) * 1.25), 2)
+
+    def _fetch_pharmacy_medications(self, q="", limit=30):
+        endpoint = (getattr(settings, "PHARMACY_CATALOG_ENDPOINT", "") or "").strip()
+        if not endpoint:
+            return None
+        try:
+            response = requests.get(
+                endpoint,
+                params={
+                    "q": q or "",
+                    "limit": limit,
+                    "in_stock_only": 0,
+                },
+                timeout=12,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            items = payload if isinstance(payload, list) else payload.get("results", [])
+            if not isinstance(items, list):
+                return []
+            return items
+        except Exception:
+            return None
+
+    def _map_pharmacy_item_to_medication(self, item):
+        name = str(item.get("name") or "").strip()
+        if not name:
+            return None
+        med_id = str(item.get("sku") or item.get("id") or name)
+        quantity = item.get("quantity")
+        price_raw = item.get("price")
+        try:
+            price = float(price_raw) if price_raw is not None else 0.0
+        except (TypeError, ValueError):
+            price = 0.0
+        if price <= 0:
+            price = self._fallback_price_for_name(name, med_id)
+        notes = f"Pharmacy stock: {quantity}" if quantity is not None else "Pharmacy stock: N/A"
+        return {
+            "med_id": med_id,
+            "name": name,
+            "category": str(item.get("category") or ""),
+            "manufacturer": str(item.get("supplier") or ""),
+            "form": str(item.get("form") or ""),
+            "strength": str(item.get("strength") or item.get("dose") or ""),
+            "price": price,
+            "stock": int(quantity or 0),
+            "notes": notes,
+            "pharmacy_sku": str(item.get("sku") or ""),
+            "pharmacy_quantity": int(quantity or 0),
+            "source": "pharmacy_inventory",
+        }
     
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1987,6 +2072,33 @@ class MedicationViewSet(viewsets.ModelViewSet):
                 pass
         return queryset
 
+    def list(self, request, *args, **kwargs):
+        q = (request.query_params.get('q') or "").strip()
+        limit = request.query_params.get('limit')
+        try:
+            limit_val = max(1, min(int(limit or 30), 100))
+        except ValueError:
+            limit_val = 30
+
+        pharmacy_items = self._fetch_pharmacy_medications(q=q, limit=limit_val)
+        if pharmacy_items is not None:
+            mapped = [self._map_pharmacy_item_to_medication(item) for item in pharmacy_items]
+            mapped = [m for m in mapped if m]
+            return Response(mapped)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        enriched = []
+        for item in serializer.data:
+            row = dict(item)
+            row["stock"] = int(row.get("pharmacy_quantity", 0) or 0)
+            try:
+                row["price"] = float(row.get("price", 0) or 0)
+            except (TypeError, ValueError):
+                row["price"] = 0.0
+            enriched.append(row)
+        return Response(enriched)
+
     @action(detail=False, methods=['get'])
     def suggest(self, request):
         q = (request.query_params.get('q') or "").strip()
@@ -1997,6 +2109,12 @@ class MedicationViewSet(viewsets.ModelViewSet):
             limit_val = max(1, min(int(limit or 10), 50))
         except ValueError:
             limit_val = 10
+
+        pharmacy_items = self._fetch_pharmacy_medications(q=q, limit=limit_val)
+        if pharmacy_items is not None:
+            mapped = [self._map_pharmacy_item_to_medication(item) for item in pharmacy_items]
+            mapped = [m for m in mapped if m]
+            return Response(mapped)
 
         base_qs = Medication.objects.filter(
             models.Q(name__icontains=q) |
