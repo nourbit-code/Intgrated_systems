@@ -96,13 +96,6 @@ options.
 - Print-ready reports, invoices, and clinical documents.
 - Structured results with reference ranges and critical-value indicators.
 
-### Quality and maintainability
-
-- Django backend tests.
-- Jest frontend tests.
-- Playwright end-to-end testing.
-- API smoke testing.
-- Modular folder structure with reusable screens, components, and services.
 
 ---
 
