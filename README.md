@@ -431,21 +431,6 @@ patient billing.
 Reviews medication requests, prescriptions, pharmacy orders, and dispensing
 activity.
 
-### Inventory clerk
-
-Manages products, quantities, suppliers, purchasing, receipts, and stock movement.
-
-### Cashier
-
-Manages invoices, payment status, and billing operations.
-
-### Doctor and receptionist
-
-Support clinic-facing prescription, patient, and medication workflows.
-
-### Administrator
-
-Maintains the pharmacy system and its operational configuration.
 
 ## Pharmacy page catalogue
 
@@ -453,142 +438,46 @@ Maintains the pharmacy system and its operational configuration.
 
 Provides a role-aware entry point for pharmacy staff.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/01-login.png
-```
-
-![Pharmacy login](docs/screenshots/pharmacy/01-login.png)
+<img width="1797" height="876" alt="image" src="https://github.com/user-attachments/assets/ae085ce0-9ab4-4b97-a577-f20e6ffe1f6f" />
 
 ### Pharmacy dashboard
 
 Summarizes orders, inventory, low-stock alerts, invoices, and key operational
 indicators.
 
-**Screenshot placeholder**
+<img width="1758" height="892" alt="image" src="https://github.com/user-attachments/assets/8fc04c1d-d123-4633-903a-28fd4c90a7dc" />
 
-```text
-docs/screenshots/pharmacy/02-dashboard.png
-```
-
-![Pharmacy dashboard](docs/screenshots/pharmacy/02-dashboard.png)
 
 ### Inventory workspace
 
 Provides a focused view for searching medicines, reviewing quantities, and
 managing stock information.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/03-inventory.png
-```
-
-![Pharmacy inventory](docs/screenshots/pharmacy/03-inventory.png)
-
-### Products and medicine catalogue
-
-Organizes medicine names, SKUs, quantities, stock thresholds, and product details
-for daily pharmacy operations.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/04-products.png
-```
-
-![Medicine products](docs/screenshots/pharmacy/04-products.png)
+<img width="1800" height="895" alt="image" src="https://github.com/user-attachments/assets/f7613209-fad6-4bc0-8578-dc83fe25ecbb" />
 
 ### Low-stock alerts
 
 Highlights products that require replenishment before they affect service
 availability.
 
-**Screenshot placeholder**
+<img width="1067" height="782" alt="image" src="https://github.com/user-attachments/assets/57ad7d68-8cac-4b9f-a57f-116a7f661d6a" />
 
-```text
-docs/screenshots/pharmacy/05-low-stock-alerts.png
-```
-
-![Low-stock alerts](docs/screenshots/pharmacy/05-low-stock-alerts.png)
-
-### Suppliers and procurement
-
-Manages supplier contacts and supports purchase order workflows for reliable
-medicine replenishment.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/06-suppliers-procurement.png
-```
-
-![Suppliers and procurement](docs/screenshots/pharmacy/06-suppliers-procurement.png)
-
-### Goods receipts
-
-Records delivered medicines, received quantities, lot information, and receiving
-status.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/07-goods-receipts.png
-```
-
-![Goods receipts](docs/screenshots/pharmacy/07-goods-receipts.png)
 
 ### Pharmacy orders
 
 Tracks prescription and clinic medication requests from creation through pharmacy
 processing.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/08-pharmacy-orders.png
-```
-
-![Pharmacy orders](docs/screenshots/pharmacy/08-pharmacy-orders.png)
+<img width="1767" height="898" alt="image" src="https://github.com/user-attachments/assets/f417b316-2058-45a8-ad6f-ae4d64ddb738" />
 
 ### Billing workspace
 
 Provides invoice visibility and supports patient-facing pharmacy payment
 operations.
 
-**Screenshot placeholder**
+<img width="1791" height="881" alt="image" src="https://github.com/user-attachments/assets/8d88a9bf-994c-41f0-b2f9-5eadce05679f" />
 
-```text
-docs/screenshots/pharmacy/09-billing.png
-```
 
-![Pharmacy billing](docs/screenshots/pharmacy/09-billing.png)
-
-### Doctor dashboard
-
-Shows doctor-related prescription and medication activity connected to the
-pharmacy workflow.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/10-doctor-dashboard.png
-```
-
-![Pharmacy doctor dashboard](docs/screenshots/pharmacy/10-doctor-dashboard.png)
-
-### Reception dashboard
-
-Supports reception-facing patient and medication coordination.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/pharmacy/11-reception-dashboard.png
-```
-
-![Pharmacy reception dashboard](docs/screenshots/pharmacy/11-reception-dashboard.png)
 
 ---
 
@@ -620,19 +509,7 @@ Integration points include:
 
 ---
 
-## Data Protection and Public Release
 
-This public presentation is intended for portfolio review. Any released demo
-data should be fictional or fully anonymized.
-
-Before publishing screenshots or source code, confirm that:
-
-- No private credential, secret, API key, or environment value is visible.
-- No real patient name, phone number, email, address, or medical record is shown.
-- No private DICOM study or identifiable medical image is included.
-- No local database containing user or patient records is published.
-- Development secrets are stored outside the repository.
-- Public screenshots use realistic but fictional demonstration content.
 
 ---
 
@@ -650,11 +527,5 @@ Potential production improvements include:
 - Accessibility improvements and multilingual support.
 
 ---
-
-## Portfolio Note
-
-This project demonstrates product thinking as well as software implementation:
-clear user roles, practical workflows, healthcare-specific data structures,
-integration boundaries, and interfaces designed around real operational needs.
 
 Add a project license before public publication.
