@@ -176,171 +176,99 @@ manage payments, review insurance information, and monitor clinic activity.
 Provides a clear entry point for authorized clinic staff and directs users to the
 appropriate doctor or receptionist workspace.
 
-**Screenshot placeholder**
+<img width="1801" height="895" alt="image" src="https://github.com/user-attachments/assets/df8d1576-a578-43bd-b2dc-da855b8f000c" />
 
-```text
-docs/screenshots/clinic/01-login.png
-```
 
-![Clinic login](docs/screenshots/clinic/01-login.png)
+
 
 ### Doctor dashboard
 
 Presents the doctor's daily workload, key statistics, appointment activity, and
 quick access to patient-care actions.
 
-**Screenshot placeholder**
+<img width="1801" height="892" alt="image" src="https://github.com/user-attachments/assets/0cf9dff7-e4b7-4b78-a465-29c62af86380" />
 
-```text
-docs/screenshots/clinic/02-doctor-dashboard.png
-```
-
-![Doctor dashboard](docs/screenshots/clinic/02-doctor-dashboard.png)
 
 ### Today's patients
 
 Shows the patients scheduled for the current day and supports a quick transition
 from the appointment list to the patient's clinical record.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/03-todays-patients.png
-```
-
-![Today's patients](docs/screenshots/clinic/03-todays-patients.png)
+<img width="1787" height="892" alt="image" src="https://github.com/user-attachments/assets/efc6b811-1feb-4b33-a8e4-e130c9e42585" />
 
 ### Patient history
 
 Provides a searchable view of previous patients and visits, helping the doctor
 understand the patient's care history before a consultation.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/04-patient-history.png
-```
-
-![Patient history](docs/screenshots/clinic/04-patient-history.png)
+<img width="1802" height="900" alt="image" src="https://github.com/user-attachments/assets/40d86111-ecb9-4e00-b8ed-6e45767d3835" />
 
 ### Patient profile
 
 Combines patient demographics, contact information, clinical background, and
 visit-related information in one accessible profile.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/05-patient-profile.png
-```
-
-![Patient profile](docs/screenshots/clinic/05-patient-profile.png)
+<img width="1803" height="901" alt="image" src="https://github.com/user-attachments/assets/fb973233-069a-4d5e-902d-0adb2d92f4d0" />
 
 ### Diagnosis and prescription
 
 Gives the doctor a structured workspace for recording diagnosis details, notes,
 medications, dosage instructions, and prescription information.
 
-**Screenshot placeholder**
+<img width="1788" height="900" alt="image" src="https://github.com/user-attachments/assets/0ea58d52-e36f-4114-a8aa-2766288113bb" />
 
-```text
-docs/screenshots/clinic/06-diagnosis.png
-```
-
-![Diagnosis and prescription](docs/screenshots/clinic/06-diagnosis.png)
-
-### Prescription scanning
+### Prescription QR 
 
 Supports prescription scanning and review as part of a more efficient medication
 workflow.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/07-prescription-scanner.png
-```
-
-![Prescription scanner](docs/screenshots/clinic/07-prescription-scanner.png)
+<img width="1787" height="902" alt="image" src="https://github.com/user-attachments/assets/46fa5ac3-f9f3-4cc2-a6bf-db78e98c0fd2" />
 
 ### Reception dashboard
 
 Gives the reception team an operational overview of appointments, patients,
 payments, and the day's priorities.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/08-reception-dashboard.png
-```
-
-![Reception dashboard](docs/screenshots/clinic/08-reception-dashboard.png)
+<img width="1787" height="905" alt="image" src="https://github.com/user-attachments/assets/13b6be69-b5c4-4ac1-b1d2-7bd992853710" />
 
 ### Patient directory and registration
 
 Supports patient search, profile creation, and controlled updates to patient
 information.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/09-patient-directory.png
-```
-
-![Patient directory](docs/screenshots/clinic/09-patient-directory.png)
+<img width="1802" height="895" alt="image" src="https://github.com/user-attachments/assets/01958cb7-b170-441b-8c00-d0ca5f883962" />
 
 ### Appointment booking
 
 Allows reception staff to select a patient, doctor, date, and appointment details
 while keeping scheduling information organized.
 
-**Screenshot placeholder**
+<img width="1797" height="892" alt="image" src="https://github.com/user-attachments/assets/d19bc190-7e70-49d9-a40f-ef60129b4365" />
 
-```text
-docs/screenshots/clinic/10-book-appointment.png
-```
-
-![Appointment booking](docs/screenshots/clinic/10-book-appointment.png)
 
 ### Payments and insurance
 
 Centralizes payment tracking and insurance details so reception staff can follow
 financial status alongside clinical appointments.
 
-**Screenshot placeholder**
+<img width="1748" height="892" alt="image" src="https://github.com/user-attachments/assets/841c99c7-5785-432a-a5f8-8858bb8f14a7" />
 
-```text
-docs/screenshots/clinic/11-payments-insurance.png
-```
-
-![Payments and insurance](docs/screenshots/clinic/11-payments-insurance.png)
 
 ### Clinic inventory
 
 Displays medicine stock information and supports better awareness of available
 clinical supplies.
+<img width="1740" height="892" alt="image" src="https://github.com/user-attachments/assets/8e15ba62-34e3-4051-b06a-093da9ff4807" />
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/clinic/12-inventory.png
-```
-
-![Clinic inventory](docs/screenshots/clinic/12-inventory.png)
+<img width="1782" height="893" alt="image" src="https://github.com/user-attachments/assets/8404da85-ba29-4963-ad48-b09a9755c7ea" />
 
 ### Clinic reports
 
 Provides management views for appointments, revenue, doctor income, and inventory
 activity.
 
-**Screenshot placeholder**
+<img width="1807" height="911" alt="image" src="https://github.com/user-attachments/assets/9cc483f4-0b57-4dcf-ae3e-cc3cd27fea65" />
 
-```text
-docs/screenshots/clinic/13-reports.png
-```
-
-![Clinic reports](docs/screenshots/clinic/13-reports.png)
-
----
 
 # 2. AlphaLab Laboratory Management
 
@@ -383,127 +311,73 @@ work queues.
 Provides controlled access to the laboratory workspaces and routes each staff
 member to the correct role-based experience.
 
-**Screenshot placeholder**
+<img width="1787" height="882" alt="image" src="https://github.com/user-attachments/assets/0464347d-3655-43c6-9ed2-3272ff60c18b" />
 
-```text
-docs/screenshots/laboratory/01-login.png
-```
-
-![Laboratory login](docs/screenshots/laboratory/01-login.png)
 
 ### Reception dashboard
 
 Summarizes appointments, active orders, payments, and front-desk actions for the
 day.
 
-**Screenshot placeholder**
+<img width="1785" height="897" alt="image" src="https://github.com/user-attachments/assets/7d5b1cc9-1d0c-4f53-a949-5a8db1ff1e84" />
 
-```text
-docs/screenshots/laboratory/02-reception-dashboard.png
-```
-
-![Laboratory reception dashboard](docs/screenshots/laboratory/02-reception-dashboard.png)
 
 ### Patient directory and EMR
 
 Lets staff search for a patient and open a consolidated record containing history,
 appointments, orders, results, and reports.
 
-**Screenshot placeholder**
+<img width="1761" height="887" alt="image" src="https://github.com/user-attachments/assets/c7b569dc-6a2d-4660-b977-8dad9e29542a" />
+<img width="1756" height="891" alt="image" src="https://github.com/user-attachments/assets/50f963c8-d4ef-4489-866f-bb8b75f57540" />
 
-```text
-docs/screenshots/laboratory/03-patient-emr.png
-```
 
-![Patient EMR](docs/screenshots/laboratory/03-patient-emr.png)
 
 ### Order creation
 
 Creates laboratory or radiology orders and connects them to the patient and
 appointment workflow.
 
-**Screenshot placeholder**
+<img width="1798" height="882" alt="image" src="https://github.com/user-attachments/assets/7349a430-0114-43dd-baa7-491b2e115a16" />
+<img width="1750" height="900" alt="image" src="https://github.com/user-attachments/assets/8cacc13f-4fec-4234-a7c0-18b10740d925" />
 
-```text
-docs/screenshots/laboratory/04-create-order.png
-```
 
-![Order creation](docs/screenshots/laboratory/04-create-order.png)
 
 ### Orders workspace
 
 Tracks the order lifecycle from waiting and in progress to completed or cancelled.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/05-orders.png
-```
-
-![Laboratory orders](docs/screenshots/laboratory/05-orders.png)
+<img width="1750" height="887" alt="image" src="https://github.com/user-attachments/assets/057e0ac4-870b-4a34-aea4-8297c491912c" />
 
 ### Sample collection
 
 Records specimen details and supports barcode-based identification for safer,
 more traceable processing.
 
-**Screenshot placeholder**
+<img width="1752" height="901" alt="image" src="https://github.com/user-attachments/assets/d990c17c-4730-425d-906a-ef221df9a50b" />
 
-```text
-docs/screenshots/laboratory/06-sample-collection.png
-```
-
-![Sample collection](docs/screenshots/laboratory/06-sample-collection.png)
 
 ### Laboratory technician dashboard
 
 Shows the technician's active queue, pending actions, and high-priority work.
 
-**Screenshot placeholder**
+<img width="1767" height="898" alt="image" src="https://github.com/user-attachments/assets/6ce117a1-858f-4742-9c5f-4b25d7917078" />
 
-```text
-docs/screenshots/laboratory/07-technician-dashboard.png
-```
-
-![Technician dashboard](docs/screenshots/laboratory/07-technician-dashboard.png)
 
 ### Test selection and lab test processing
 
 Helps technicians select the required tests, review order details, and progress
 each test through the laboratory workflow.
 
-**Screenshot placeholder**
+<img width="1787" height="887" alt="image" src="https://github.com/user-attachments/assets/e7705f76-c2be-419d-ba04-69aa5c66b8cf" />
 
-```text
-docs/screenshots/laboratory/08-test-processing.png
-```
 
-![Test processing](docs/screenshots/laboratory/08-test-processing.png)
-
-### Results dashboard
-
-Provides a clear queue of pending, active, and completed laboratory results.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/09-results-dashboard.png
-```
-
-![Results dashboard](docs/screenshots/laboratory/09-results-dashboard.png)
 
 ### Results entry
 
 Supports structured entry of measurements, reference ranges, units, comments,
 and critical-value indicators.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/10-results-entry.png
-```
-
-![Results entry](docs/screenshots/laboratory/10-results-entry.png)
+<img width="1781" height="896" alt="image" src="https://github.com/user-attachments/assets/4d1d92c3-a392-476d-a624-3900578d2a7a" />
 
 ### Radiology order and DICOM viewer
 
@@ -511,78 +385,20 @@ Provides a radiology workspace for reviewing imaging studies with controls such
 as zoom, pan, windowing, brightness, contrast, slice navigation, comparison, and
 annotations.
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/11-radiology-viewer.png
-```
-
-![Radiology viewer](docs/screenshots/laboratory/11-radiology-viewer.png)
-
-### Radiology report
-
-Captures structured findings, modality details, body part, laterality, severity,
-and follow-up recommendations.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/12-radiology-report.png
-```
-
-![Radiology report](docs/screenshots/laboratory/12-radiology-report.png)
+<img width="1761" height="898" alt="image" src="https://github.com/user-attachments/assets/323b5aef-475c-49b2-9ad0-cfdf8e78dd86" />
 
 ### Laboratory inventory
 
 Displays stock levels, expiry information, minimum quantities, suppliers, and
 inventory activity.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/13-inventory.png
-```
-
-![Laboratory inventory](docs/screenshots/laboratory/13-inventory.png)
-
-### Inventory alerts and procurement
-
-Highlights low-stock and expired items and supports supplier, order-request,
-purchase, and receiving workflows.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/14-inventory-alerts.png
-```
-
-![Inventory alerts](docs/screenshots/laboratory/14-inventory-alerts.png)
+<img width="1765" height="901" alt="image" src="https://github.com/user-attachments/assets/bc0f1e3d-20fe-41a4-9fae-718bccef402e" />
 
 ### Billing and payments
 
 Connects patient orders to invoices, payment status, insurance providers, and
 discount calculations.
+<img width="1781" height="891" alt="image" src="https://github.com/user-attachments/assets/73904a8c-7a80-4520-ab9b-e1e19db73457" />
 
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/15-billing.png
-```
-
-![Laboratory billing](docs/screenshots/laboratory/15-billing.png)
-
-### Laboratory reports
-
-Provides operational and financial visibility through test-volume, revenue, and
-inventory reporting.
-
-**Screenshot placeholder**
-
-```text
-docs/screenshots/laboratory/16-reports.png
-```
-
-![Laboratory reports](docs/screenshots/laboratory/16-reports.png)
 
 ---
 
